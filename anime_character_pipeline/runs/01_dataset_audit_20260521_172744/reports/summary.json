@@ -1,0 +1,26 @@
+{
+  "run_id": "20260521_172744",
+  "created_at": "2026-05-21T17:42:23-04:00",
+  "input_dir": "/home/ssparzival/Imágenes/Ente Photos/Twitter",
+  "run_dir": "/home/ssparzival/Proyectos/GitHub/Automatic-Organization-of-Anime-Character-Images/anime_character_pipeline/runs/01_dataset_audit_20260521_172744",
+  "total_candidate_files": 15744,
+  "valid_images": 15742,
+  "invalid_images": 2,
+  "exact_duplicate_groups": 19,
+  "exact_duplicate_files_involved": 39,
+  "perceptual_hash_threshold": 6,
+  "perceptual_duplicate_candidate_pairs": 40,
+  "perceptual_duplicate_groups": 40,
+  "perceptual_duplicate_files_involved": 80,
+  "python": "3.11.14 (main, May 21 2026, 11:39:58) [GCC 16.1.1 20260430]",
+  "platform": "Linux-7.0.9-1-cachyos-x86_64-with-glibc2.43",
+  "max_workers": 16,
+  "outputs": {
+    "metadata": "/home/ssparzival/Proyectos/GitHub/Automatic-Organization-of-Anime-Character-Images/anime_character_pipeline/runs/01_dataset_audit_20260521_172744/tables/image_metadata.csv",
+    "valid_images": "/home/ssparzival/Proyectos/GitHub/Automatic-Organization-of-Anime-Character-Images/anime_character_pipeline/runs/01_dataset_audit_20260521_172744/tables/valid_images.csv",
+    "invalid_images": "/home/ssparzival/Proyectos/GitHub/Automatic-Organization-of-Anime-Character-Images/anime_character_pipeline/runs/01_dataset_audit_20260521_172744/tables/invalid_images.csv",
+    "exact_duplicate_groups": "/home/ssparzival/Proyectos/GitHub/Automatic-Organization-of-Anime-Character-Images/anime_character_pipeline/runs/01_dataset_audit_20260521_172744/tables/exact_duplicate_groups.csv",
+    "perceptual_duplicate_candidate_pairs": "/home/ssparzival/Proyectos/GitHub/Automatic-Organization-of-Anime-Character-Images/anime_character_pipeline/runs/01_dataset_audit_20260521_172744/tables/perceptual_duplicate_candidate_pairs.csv",
+    "perceptual_duplicate_groups": "/home/ssparzival/Proyectos/GitHub/Automatic-Organization-of-Anime-Character-Images/anime_character_pipeline/runs/01_dataset_audit_20260521_172744/tables/perceptual_duplicate_groups.csv"
+  }
+}
