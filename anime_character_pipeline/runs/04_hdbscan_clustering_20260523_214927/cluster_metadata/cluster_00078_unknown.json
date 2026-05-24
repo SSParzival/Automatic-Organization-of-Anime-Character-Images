@@ -1,0 +1,108 @@
+{
+  "cluster_label": 78,
+  "cluster_folder_stub": "cluster_00078_unknown",
+  "is_noise_cluster": false,
+  "image_count": 7,
+  "requires_review_count": 0,
+  "requires_review_share": 0.0,
+  "mean_probability": 0.9784609079360962,
+  "median_probability": 1.0,
+  "min_probability": 0.8911803960800171,
+  "mean_outlier_score": 0.021539095789194107,
+  "median_outlier_score": 0.0,
+  "max_outlier_score": 0.1088196262717247,
+  "mean_distance_to_centroid": 0.3658581078052521,
+  "median_distance_to_centroid": 0.33774304389953613,
+  "max_distance_to_centroid": 0.5387571454048157,
+  "clustering": {
+    "backend": "hdbscan",
+    "algorithm": "HDBSCAN",
+    "metric": "euclidean",
+    "min_cluster_size": 5,
+    "min_samples": 4,
+    "cluster_selection_method": "eom",
+    "low_probability_threshold": 0.35,
+    "high_outlier_quantile": 0.95,
+    "high_outlier_threshold": 0.6978467583656311
+  },
+  "created_at": "2026-05-23T21:56:39-04:00",
+  "sample_items": [
+    {
+      "embedding_row": 213,
+      "relative_path": "20251018_121215.jpg",
+      "source_path": "/home/ssparzival/Imágenes/Ente Photos/Twitter/20251018_121215.jpg",
+      "crop_path": "/home/ssparzival/Proyectos/GitHub/Automatic-Organization-of-Anime-Character-Images/anime_character_pipeline/runs/02_crop_preparation_20260523_130820/crops/img_0000213_20251018_121215.jpg",
+      "cluster_probability": 0.8911803960800171,
+      "outlier_score": 0.1088196262717247,
+      "distance_to_centroid": 0.5387571454048157,
+      "requires_manual_review": false,
+      "cluster_review_reason": ""
+    },
+    {
+      "embedding_row": 1874,
+      "relative_path": "20251121_193603.jpg",
+      "source_path": "/home/ssparzival/Imágenes/Ente Photos/Twitter/20251121_193603.jpg",
+      "crop_path": "/home/ssparzival/Proyectos/GitHub/Automatic-Organization-of-Anime-Character-Images/anime_character_pipeline/runs/02_crop_preparation_20260523_130820/crops/img_0001874_20251121_193603.jpg",
+      "cluster_probability": 1.0,
+      "outlier_score": 0.0,
+      "distance_to_centroid": 0.37679123878479004,
+      "requires_manual_review": false,
+      "cluster_review_reason": ""
+    },
+    {
+      "embedding_row": 2871,
+      "relative_path": "20251221_011130.jpg",
+      "source_path": "/home/ssparzival/Imágenes/Ente Photos/Twitter/20251221_011130.jpg",
+      "crop_path": "/home/ssparzival/Proyectos/GitHub/Automatic-Organization-of-Anime-Character-Images/anime_character_pipeline/runs/02_crop_preparation_20260523_130820/crops/img_0002871_20251221_011130.jpg",
+      "cluster_probability": 1.0,
+      "outlier_score": 0.0,
+      "distance_to_centroid": 0.3003048300743103,
+      "requires_manual_review": false,
+      "cluster_review_reason": ""
+    },
+    {
+      "embedding_row": 9760,
+      "relative_path": "HIn2hd-WcAEWzqY.jpeg",
+      "source_path": "/home/ssparzival/Imágenes/Ente Photos/Twitter/HIn2hd-WcAEWzqY.jpeg",
+      "crop_path": "/home/ssparzival/Proyectos/GitHub/Automatic-Organization-of-Anime-Character-Images/anime_character_pipeline/runs/02_crop_preparation_20260523_130820/crops/img_0009760_HIn2hd-WcAEWzqY.jpg",
+      "cluster_probability": 0.9580459594726562,
+      "outlier_score": 0.041954051703214645,
+      "distance_to_centroid": 0.4076797366142273,
+      "requires_manual_review": false,
+      "cluster_review_reason": ""
+    },
+    {
+      "embedding_row": 12081,
+      "relative_path": "IMG_4475.JPG",
+      "source_path": "/home/ssparzival/Imágenes/Ente Photos/Twitter/IMG_4475.JPG",
+      "crop_path": "/home/ssparzival/Proyectos/GitHub/Automatic-Organization-of-Anime-Character-Images/anime_character_pipeline/runs/02_crop_preparation_20260523_130820/crops/img_0012081_IMG_4475.jpg",
+      "cluster_probability": 1.0,
+      "outlier_score": 0.0,
+      "distance_to_centroid": 0.2752610146999359,
+      "requires_manual_review": false,
+      "cluster_review_reason": ""
+    },
+    {
+      "embedding_row": 12580,
+      "relative_path": "IMG_5372.JPG",
+      "source_path": "/home/ssparzival/Imágenes/Ente Photos/Twitter/IMG_5372.JPG",
+      "crop_path": "/home/ssparzival/Proyectos/GitHub/Automatic-Organization-of-Anime-Character-Images/anime_character_pipeline/runs/02_crop_preparation_20260523_130820/crops/img_0012580_IMG_5372.jpg",
+      "cluster_probability": 1.0,
+      "outlier_score": 0.0,
+      "distance_to_centroid": 0.3244696855545044,
+      "requires_manual_review": false,
+      "cluster_review_reason": ""
+    },
+    {
+      "embedding_row": 13177,
+      "relative_path": "IMG_6302.JPG",
+      "source_path": "/home/ssparzival/Imágenes/Ente Photos/Twitter/IMG_6302.JPG",
+      "crop_path": "/home/ssparzival/Proyectos/GitHub/Automatic-Organization-of-Anime-Character-Images/anime_character_pipeline/runs/02_crop_preparation_20260523_130820/crops/img_0013177_IMG_6302.jpg",
+      "cluster_probability": 1.0,
+      "outlier_score": 0.0,
+      "distance_to_centroid": 0.33774304389953613,
+      "requires_manual_review": false,
+      "cluster_review_reason": ""
+    }
+  ]
+}

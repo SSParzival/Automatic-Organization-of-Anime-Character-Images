@@ -1,0 +1,5 @@
+sheet_name,image_count,sampled_image_count,created,contact_sheet_path
+noise_samples,9138,24.0,True,/home/ssparzival/Proyectos/GitHub/Automatic-Organization-of-Anime-Character-Images/anime_character_pipeline/runs/04_hdbscan_clustering_20260523_214927/contact_sheets/_noise_samples.jpg
+low_probability_samples,0,,False,
+high_outlier_samples,0,,False,
+manual_review_samples,10720,24.0,True,/home/ssparzival/Proyectos/GitHub/Automatic-Organization-of-Anime-Character-Images/anime_character_pipeline/runs/04_hdbscan_clustering_20260523_214927/contact_sheets/_manual_review_samples.jpg

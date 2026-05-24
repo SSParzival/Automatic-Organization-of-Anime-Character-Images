@@ -1,0 +1,15 @@
+{
+  "labels_file_exists": true,
+  "probabilities_file_exists": true,
+  "outlier_scores_file_exists": true,
+  "cluster_manifest_exists": true,
+  "cluster_summary_exists": true,
+  "folder_assignment_exists": true,
+  "labels_match_embeddings": true,
+  "probabilities_match_embeddings": true,
+  "outlier_scores_match_embeddings": true,
+  "cluster_manifest_rows_match_embeddings": true,
+  "folder_assignment_rows_match_embeddings": true,
+  "no_nan_labels": true,
+  "cluster_count_non_negative": true
+}

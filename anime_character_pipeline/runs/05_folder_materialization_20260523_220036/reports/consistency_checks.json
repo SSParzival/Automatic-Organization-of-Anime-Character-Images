@@ -1,0 +1,16 @@
+{
+  "final_output_dir_exists": true,
+  "materialization_plan_rows_match_assignment": true,
+  "materialization_result_rows_match_plan": true,
+  "materialization_validation_rows_match_plan": true,
+  "destination_paths_unique": true,
+  "no_materialization_errors": true,
+  "all_destination_files_valid": true,
+  "global_index_exists": true,
+  "folder_counts_exists": true,
+  "operation_counts_exists": true,
+  "readme_exists": true,
+  "folder_manifest_index_exists": true,
+  "folder_metadata_index_exists": true,
+  "output_folder_contact_sheets_exists": true
+}
