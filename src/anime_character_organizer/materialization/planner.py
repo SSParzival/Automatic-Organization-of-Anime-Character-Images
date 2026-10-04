@@ -76,9 +76,7 @@ def build_materialization_plan(
             "destination_filename": unique_dest_path.name,
         })
 
-    plan_df = pd.DataFrame(plan_rows)
-    return assignment_df.merge(
-        plan_df[["embedding_row", "source_path", "destination_path", "destination_filename"]],
-        on=["embedding_row", "source_path"],
-        how="left",
-    )
+    result_df = assignment_df.copy().reset_index(drop=True)
+    result_df["destination_path"] = [r["destination_path"] for r in plan_rows]
+    result_df["destination_filename"] = [r["destination_filename"] for r in plan_rows]
+    return result_df

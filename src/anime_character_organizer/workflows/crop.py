@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 import platform
 import sys
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
@@ -101,7 +101,7 @@ def run_crop_preparation(
     selected_df.insert(0, "image_index", np.arange(len(selected_df), dtype=int))
 
     if selected_df.empty:
-        raise RuntimeError("No images were selected for detection.")
+        raise ConfigurationError("No images were selected for detection.")
 
     if max_workers is None:
         max_workers = max(1, min(8, (os.cpu_count() or 2)))

@@ -25,5 +25,5 @@ def safe_relative_path(path: Union[str, Path], base_dir: Union[str, Path]) -> st
     base_dir = Path(base_dir).resolve()
     try:
         return path.relative_to(base_dir).as_posix()
-    except Exception:
+    except ValueError:
         return path.as_posix()

@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from ..exceptions import ConfigurationError, RunNotFoundError
+from ..exceptions import ConfigurationError, InvalidImageError, RunNotFoundError
 from ..materialization.operations import materialize_one_file
 from ..tagging.aggregation import aggregate_cluster_tags
 from ..tagging.extraction import extract_tags_with_fallback
@@ -118,7 +118,7 @@ def run_cluster_naming(
     cluster_work_df = cluster_work_df[cluster_work_df["cluster_label"].isin(eligible_labels)].copy()
 
     if cluster_work_df.empty:
-        raise RuntimeError("No clusters eligible for naming under current settings.")
+        raise ConfigurationError("No clusters eligible for naming under current settings.")
 
     # Select representative samples per cluster
     sample_rows = []
@@ -157,7 +157,7 @@ def run_cluster_naming(
     tagging_ready_df.to_csv(tables_dir / "tagging_ready_manifest.csv", index=False)
 
     if tagging_ready_df.empty:
-        raise RuntimeError("No valid images available for tagging.")
+        raise InvalidImageError("No valid images available for tagging.")
 
     # Tag images
     tagging_rows = []
@@ -377,7 +377,7 @@ def run_cluster_naming(
             "folder_rename_plan": (tables_dir / "folder_rename_plan.csv").as_posix(),
             "folder_rename_preview": (tables_dir / "folder_rename_preview.csv").as_posix(),
             "naming_contact_sheets": (tables_dir / "naming_contact_sheets.csv").as_posix(),
-            "cluster_naming_metadata_index": metadata_index_df.to_dict() if not metadata_index_df.empty else {},
+            "cluster_naming_metadata_index": metadata_index_path.as_posix(),
         },
     }
 

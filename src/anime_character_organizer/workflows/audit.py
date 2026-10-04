@@ -68,7 +68,7 @@ def run_dataset_audit(
         json.dump(scan_report, f, ensure_ascii=False, indent=2)
 
     if not candidate_files:
-        raise RuntimeError(f"No candidate image files found in {input_dir} with extensions {valid_extensions}")
+        raise ConfigurationError(f"No candidate image files found in {input_dir} with extensions {valid_extensions}")
 
     metadata_df, valid_df, invalid_df = audit_images(
         candidate_files=candidate_files,

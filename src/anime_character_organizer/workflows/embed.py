@@ -14,7 +14,7 @@ from tqdm.auto import tqdm
 
 from ..embeddings.extraction import extract_all_embeddings, warmup_ccip_model
 from ..embeddings.normalization import l2_normalize_matrix
-from ..exceptions import ConfigurationError, RunNotFoundError
+from ..exceptions import ConfigurationError, EmbeddingError, InvalidImageError, RunNotFoundError
 from ..utils.paths import normalize_path_string
 from ..utils.runs import find_latest_run
 from ..utils.serialization import safe_bool_series
@@ -85,7 +85,7 @@ def run_embedding_extraction(
     embedding_input_df.insert(0, "embedding_index", np.arange(len(embedding_input_df), dtype=int))
 
     if embedding_input_df.empty:
-        raise RuntimeError("No crops were selected for embedding extraction.")
+        raise ConfigurationError("No crops were selected for embedding extraction.")
 
     embedding_input_path = tables_dir / "embedding_input_manifest.csv"
     embedding_input_df.to_csv(embedding_input_path, index=False)
@@ -118,7 +118,7 @@ def run_embedding_extraction(
     invalid_crop_val_df.to_csv(invalid_crop_val_path, index=False)
 
     if embedding_ready_df.empty:
-        raise RuntimeError("No valid crop files available for CCIP extraction.")
+        raise InvalidImageError("No valid crop files available for CCIP extraction.")
 
     # Warmup
     warmup_ccip_model(embedding_ready_df.iloc[0]["crop_path"], model=ccip_model, size=ccip_image_size)
@@ -145,7 +145,7 @@ def run_embedding_extraction(
 
     ok_records = [r for r in feature_records if r["status"] == "ok"]
     if not ok_records:
-        raise RuntimeError("All CCIP embedding extractions failed.")
+        raise EmbeddingError("All CCIP embedding extractions failed.")
 
     ok_paths = [r["path"] for r in ok_records]
     raw_embeddings = np.vstack([r["feature"] for r in ok_records]).astype(np.float32)

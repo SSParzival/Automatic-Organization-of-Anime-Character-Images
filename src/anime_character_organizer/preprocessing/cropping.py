@@ -2,15 +2,11 @@
 Image cropping, priority-based region extraction (head -> person -> fallback), and crop saving.
 """
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
-import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
-import numpy as np
+from typing import Any, Dict, Optional, Tuple, Union
 import pandas as pd
 from PIL import Image, ImageOps
-from tqdm.auto import tqdm
 
 from .detection import choose_best_detection, detect_heads_safe, detect_persons_safe, detection_to_dict
 from .geometry import clamp_box, expand_box
