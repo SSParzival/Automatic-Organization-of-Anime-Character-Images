@@ -6,3 +6,9 @@ organized_output/
 .png
 .jpeg
 anime_character_pipeline/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.pytest_cache/
