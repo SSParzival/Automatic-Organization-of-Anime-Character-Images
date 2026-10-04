@@ -35,6 +35,8 @@ def main():
     )
     parser.add_argument(
         "--create-named-output",
+        "--apply-rename",
+        dest="create_named_output",
         action="store_true",
         help="Materialize an additional named folder tree in organized_output/.",
     )

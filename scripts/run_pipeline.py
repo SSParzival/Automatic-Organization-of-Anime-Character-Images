@@ -30,7 +30,9 @@ def main():
     )
     parser.add_argument(
         "--mode",
+        "--link-mode",
         "-m",
+        dest="mode",
         default="hardlink",
         choices=["hardlink", "copy", "symlink"],
         help="Materialization link mode (default: hardlink).",
