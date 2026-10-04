@@ -3,6 +3,9 @@ Unit tests for clustering: algorithm, centroids, diagnostics, and review flaggin
 """
 
 import unittest
+from pathlib import Path
+import tempfile
+from unittest.mock import patch
 import numpy as np
 import pandas as pd
 
@@ -17,6 +20,7 @@ from anime_character_organizer.clustering.diagnostics import (
     flag_cluster_review_items,
     sample_representative_and_boundary_rows,
 )
+from anime_character_organizer.workflows.cluster import run_clustering
 
 
 class TestClustering(unittest.TestCase):
@@ -138,6 +142,45 @@ class TestClustering(unittest.TestCase):
         split = build_folder_assignment_manifest(df, separate_review_folders=True)
         self.assertEqual(split.iloc[0]["proposed_folder"], "cluster_00000_unknown")
         self.assertEqual(split.iloc[1]["proposed_folder"], "cluster_00000_unknown_review")
+
+    def test_noise_reassignment_updates_all_final_centroid_distances(self):
+        embeddings = np.array([[1.0, 0.0], [0.9, 0.1], [0.8, 0.2]], dtype=np.float32)
+        labels = np.array([0, 0, -1])
+        probabilities = np.array([0.9, 0.9, 0.0], dtype=np.float64)
+        outliers = np.array([0.1, 0.1, 1.0], dtype=np.float64)
+
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            embed_run = base / "runs" / "03_ccip_embeddings_test"
+            (embed_run / "arrays").mkdir(parents=True)
+            (embed_run / "tables").mkdir()
+            np.save(embed_run / "arrays" / "ccip_embeddings_l2.npy", embeddings)
+            pd.DataFrame({
+                "embedding_row": [0, 1, 2],
+                "crop_path": ["missing0.png", "missing1.png", "missing2.png"],
+                "source_path": ["source0.png", "source1.png", "source2.png"],
+                "relative_path": ["0.png", "1.png", "2.png"],
+                "needs_review": [False, False, False],
+                "selected_region_type": ["head", "head", "head"],
+            }).to_csv(embed_run / "tables" / "successful_embedding_manifest.csv", index=False)
+
+            with patch(
+                "anime_character_organizer.workflows.cluster.fit_hdbscan",
+                return_value=(labels, probabilities, outliers, "test"),
+            ):
+                result = run_clustering(
+                    project_dir=base,
+                    previous_run_dir=embed_run,
+                    max_reassign_distance=1.0,
+                    show_progress=False,
+                )
+
+        final_centroid = result["centroids"][0]
+        expected_distances = np.linalg.norm(embeddings - final_centroid, axis=1)
+        np.testing.assert_allclose(
+            result["cluster_manifest_df"]["distance_to_centroid"],
+            expected_distances,
+        )
 
 
 if __name__ == "__main__":

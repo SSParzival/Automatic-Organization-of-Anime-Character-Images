@@ -155,6 +155,13 @@ def run_clustering(
 
             if reassigned_count > 0:
                 centroids = compute_cluster_centroids(embeddings, labels)
+                for label, centroid in centroids.items():
+                    idx = np.where(labels == label)[0]
+                    final_distances = euclidean_distance_to_centroid(
+                        embeddings[idx], centroid
+                    ).astype(np.float32)
+                    distance_to_centroid[idx] = final_distances
+                    cluster_manifest_df.loc[idx, "distance_to_centroid"] = final_distances
 
     cluster_summary_df = calculate_cluster_summary(cluster_manifest_df)
     folder_assignment_df = build_folder_assignment_manifest(
