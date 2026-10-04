@@ -1,6 +1,0 @@
-sheet_name,image_count,created,path
-region_full_image,20,True,/home/ssparzival/Proyectos/GitHub/Automatic-Organization-of-Anime-Character-Images/anime_character_pipeline/runs/02_crop_preparation_20260523_130820/contact_sheets/region_full_image.jpg
-region_head,20,True,/home/ssparzival/Proyectos/GitHub/Automatic-Organization-of-Anime-Character-Images/anime_character_pipeline/runs/02_crop_preparation_20260523_130820/contact_sheets/region_head.jpg
-region_person,20,True,/home/ssparzival/Proyectos/GitHub/Automatic-Organization-of-Anime-Character-Images/anime_character_pipeline/runs/02_crop_preparation_20260523_130820/contact_sheets/region_person.jpg
-needs_review,20,True,/home/ssparzival/Proyectos/GitHub/Automatic-Organization-of-Anime-Character-Images/anime_character_pipeline/runs/02_crop_preparation_20260523_130820/contact_sheets/needs_review.jpg
-multiple_heads_detected,20,True,/home/ssparzival/Proyectos/GitHub/Automatic-Organization-of-Anime-Character-Images/anime_character_pipeline/runs/02_crop_preparation_20260523_130820/contact_sheets/multiple_heads_detected.jpg

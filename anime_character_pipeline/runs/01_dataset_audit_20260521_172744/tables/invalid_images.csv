@@ -1,3 +1,0 @@
-path,relative_path,filename,stem,extension,parent,file_size_bytes,status,error_type,error_message,format,width,height,mode,is_animated,n_frames,sha256,phash,dhash,whash,colorhash,processed_at
-/home/ssparzival/Imágenes/Ente Photos/Twitter/IMG_1956.JPG,IMG_1956.JPG,IMG_1956.JPG,IMG_1956,.jpg,/home/ssparzival/Imágenes/Ente Photos/Twitter,173345,invalid,OSError,image file is truncated (0 bytes not processed),JPEG,1311,2048,RGB,False,1,,,,,,2026-05-21T17:36:04-04:00
-/home/ssparzival/Imágenes/Ente Photos/Twitter/IMG_2017.JPG,IMG_2017.JPG,IMG_2017.JPG,IMG_2017,.jpg,/home/ssparzival/Imágenes/Ente Photos/Twitter,1598720,invalid,OSError,image file is truncated (5 bytes not processed),JPEG,1242,1871,RGB,False,1,,,,,,2026-05-21T17:36:05-04:00
