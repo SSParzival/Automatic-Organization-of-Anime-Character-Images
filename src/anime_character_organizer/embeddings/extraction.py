@@ -3,7 +3,8 @@ CCIP feature extraction with batching, graceful single-item fallback, and memory
 """
 
 import gc
-from typing import Any, Dict, Generator, Iterable, List, Union
+from typing import Any, Dict, Generator, Iterable, List
+
 import numpy as np
 from tqdm.auto import tqdm
 
@@ -21,6 +22,7 @@ def warmup_ccip_model(sample_path: str, model: str, size: int) -> np.ndarray:
     """Warm up the CCIP model by extracting features for one sample image."""
     try:
         from imgutils.metrics import ccip_extract_feature
+
         feat = ccip_extract_feature(sample_path, model=model, size=size)
         arr = np.asarray(feat, dtype=np.float32)
         if arr.ndim != 1:
@@ -50,9 +52,7 @@ def extract_batch_with_fallback(
         features = np.asarray(features, dtype=np.float32)
 
         if features.ndim != 2 or features.shape[0] != len(paths_str):
-            raise ValueError(
-                f"Feature matrix mismatch: expected ({len(paths_str)}, D), got {features.shape}"
-            )
+            raise ValueError(f"Feature matrix mismatch: expected ({len(paths_str)}, D), got {features.shape}")
 
         return [
             {
@@ -74,21 +74,25 @@ def extract_batch_with_fallback(
                 feature = np.asarray(feature, dtype=np.float32)
                 if feature.ndim != 1:
                     raise ValueError(f"Expected 1D feature vector, got shape {feature.shape}.")
-                records.append({
-                    "path": path,
-                    "status": "ok",
-                    "error_type": None,
-                    "error_message": None,
-                    "feature": feature,
-                })
+                records.append(
+                    {
+                        "path": path,
+                        "status": "ok",
+                        "error_type": None,
+                        "error_message": None,
+                        "feature": feature,
+                    }
+                )
             except Exception as single_exc:
-                records.append({
-                    "path": path,
-                    "status": "error",
-                    "error_type": type(single_exc).__name__,
-                    "error_message": str(single_exc),
-                    "feature": None,
-                })
+                records.append(
+                    {
+                        "path": path,
+                        "status": "error",
+                        "error_type": type(single_exc).__name__,
+                        "error_message": str(single_exc),
+                        "feature": None,
+                    }
+                )
         return records
 
 

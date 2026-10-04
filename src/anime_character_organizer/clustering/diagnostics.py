@@ -2,7 +2,8 @@
 Cluster diagnostics, quality metrics, manual review flagging, and folder assignment planning.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
+
 import numpy as np
 import pandas as pd
 
@@ -18,7 +19,7 @@ def flag_cluster_review_items(
     """
     Flag items requiring manual review based on noise status, low probability,
     high outlier score quantile, and prior crop review flags.
-    
+
     Returns:
         (updated_cluster_manifest_df, computed_high_outlier_threshold)
     """
@@ -59,10 +60,7 @@ def flag_cluster_review_items(
     ] = "previous_crop_review_flag"
 
     df["requires_manual_review"] = (
-        df["is_noise"]
-        | df["is_low_probability"]
-        | df["is_high_outlier"]
-        | df["needs_review"]
+        df["is_noise"] | df["is_low_probability"] | df["is_high_outlier"] | df["needs_review"]
     )
 
     df["cluster_folder_stub"] = df["cluster_label"].map(
@@ -90,26 +88,36 @@ def calculate_cluster_summary(
         probs = cdf["cluster_probability"].replace([np.inf, -np.inf], np.nan).dropna()
         outliers = cdf["outlier_score"].replace([np.inf, -np.inf], np.nan).dropna()
 
-        rows.append({
-            "cluster_label": int(label),
-            "cluster_folder_stub": folder_stub,
-            "is_noise_cluster": bool(is_noise),
-            "image_count": int(len(cdf)),
-            "requires_review_count": int(cdf["requires_manual_review"].sum()),
-            "requires_review_share": float(cdf["requires_manual_review"].mean()),
-            "mean_probability": float(probs.mean()) if not probs.empty else np.nan,
-            "median_probability": float(probs.median()) if not probs.empty else np.nan,
-            "min_probability": float(probs.min()) if not probs.empty else np.nan,
-            "mean_outlier_score": float(outliers.mean()) if not outliers.empty else np.nan,
-            "median_outlier_score": float(outliers.median()) if not outliers.empty else np.nan,
-            "max_outlier_score": float(outliers.max()) if not outliers.empty else np.nan,
-            "mean_distance_to_centroid": float(distances.mean()) if not distances.empty else np.nan,
-            "median_distance_to_centroid": float(distances.median()) if not distances.empty else np.nan,
-            "max_distance_to_centroid": float(distances.max()) if not distances.empty else np.nan,
-            "head_crop_count": int(cdf["selected_region_type"].eq("head").sum()) if "selected_region_type" in cdf.columns else 0,
-            "person_crop_count": int(cdf["selected_region_type"].eq("person").sum()) if "selected_region_type" in cdf.columns else 0,
-            "full_image_count": int(cdf["selected_region_type"].astype(str).str.contains("full_image", na=False).sum()) if "selected_region_type" in cdf.columns else 0,
-        })
+        rows.append(
+            {
+                "cluster_label": int(label),
+                "cluster_folder_stub": folder_stub,
+                "is_noise_cluster": bool(is_noise),
+                "image_count": int(len(cdf)),
+                "requires_review_count": int(cdf["requires_manual_review"].sum()),
+                "requires_review_share": float(cdf["requires_manual_review"].mean()),
+                "mean_probability": float(probs.mean()) if not probs.empty else np.nan,
+                "median_probability": float(probs.median()) if not probs.empty else np.nan,
+                "min_probability": float(probs.min()) if not probs.empty else np.nan,
+                "mean_outlier_score": float(outliers.mean()) if not outliers.empty else np.nan,
+                "median_outlier_score": float(outliers.median()) if not outliers.empty else np.nan,
+                "max_outlier_score": float(outliers.max()) if not outliers.empty else np.nan,
+                "mean_distance_to_centroid": float(distances.mean()) if not distances.empty else np.nan,
+                "median_distance_to_centroid": float(distances.median()) if not distances.empty else np.nan,
+                "max_distance_to_centroid": float(distances.max()) if not distances.empty else np.nan,
+                "head_crop_count": int(cdf["selected_region_type"].eq("head").sum())
+                if "selected_region_type" in cdf.columns
+                else 0,
+                "person_crop_count": int(cdf["selected_region_type"].eq("person").sum())
+                if "selected_region_type" in cdf.columns
+                else 0,
+                "full_image_count": int(
+                    cdf["selected_region_type"].astype(str).str.contains("full_image", na=False).sum()
+                )
+                if "selected_region_type" in cdf.columns
+                else 0,
+            }
+        )
 
     summary_df = pd.DataFrame(rows)
     if not summary_df.empty:
@@ -142,12 +150,12 @@ def build_folder_assignment_manifest(
 ) -> pd.DataFrame:
     """
     Build folder assignment plan based on cluster label and review flags.
-    
+
     If separate_review_folders is False (recommended):
         Non-noise items go to their character cluster folder (e.g. cluster_XXXXX_unknown)
         with review flags recorded in manifests and metadata for non-destructive inspection.
         Only unassigned noise items go to _needs_review_noise.
-        
+
     If separate_review_folders is True:
         Clean items -> cluster_XXXXX_unknown
         Noise items -> _needs_review_noise
@@ -173,13 +181,14 @@ def build_folder_assignment_manifest(
         df.loc[
             df["assignment_category"].eq("needs_review_cluster_member"),
             "proposed_folder",
-        ] = df.loc[
-            df["assignment_category"].eq("needs_review_cluster_member"),
-            "cluster_folder_stub",
-        ] + "_review"
+        ] = (
+            df.loc[
+                df["assignment_category"].eq("needs_review_cluster_member"),
+                "cluster_folder_stub",
+            ]
+            + "_review"
+        )
 
-    df["proposed_folder"] = df["proposed_folder"].map(
-        lambda value: sanitize_folder_name(value, "_needs_review")
-    )
+    df["proposed_folder"] = df["proposed_folder"].map(lambda value: sanitize_folder_name(value, "_needs_review"))
 
     return df

@@ -3,6 +3,7 @@ Unit tests for embeddings modules: batching, validation, and normalization.
 """
 
 import unittest
+
 import numpy as np
 
 from anime_character_organizer.embeddings.extraction import batch_iterable
@@ -18,11 +19,14 @@ class TestEmbeddings(unittest.TestCase):
         self.assertEqual(batches[-1], [9])
 
     def test_l2_normalization(self):
-        mat = np.array([
-            [3.0, 4.0],
-            [1.0, 1.0],
-            [0.0, 0.0],
-        ], dtype=np.float32)
+        mat = np.array(
+            [
+                [3.0, 4.0],
+                [1.0, 1.0],
+                [0.0, 0.0],
+            ],
+            dtype=np.float32,
+        )
 
         norm_mat = l2_normalize_matrix(mat)
         self.assertEqual(norm_mat.shape, (3, 2))

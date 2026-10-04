@@ -4,6 +4,7 @@ Inference wrappers for anime image taggers (PixAI and WD14) with fallback.
 
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
+
 from .normalization import normalize_tag_name
 
 
@@ -29,8 +30,7 @@ def extract_pixai_tags(
         "character_tags": character_dict,
         "ips": [normalize_tag_name(x) for x in list(ips or [])],
         "ips_mapping": {
-            normalize_tag_name(k): [normalize_tag_name(x) for x in v]
-            for k, v in dict(ips_mapping or {}).items()
+            normalize_tag_name(k): [normalize_tag_name(x) for x in v] for k, v in dict(ips_mapping or {}).items()
         },
     }
 
@@ -70,7 +70,7 @@ def extract_tags_with_fallback(
 ) -> Tuple[Optional[Dict[str, Any]], Optional[str], Optional[str]]:
     """
     Extract tags using primary tagger, falling back to WD14 if primary fails.
-    
+
     Returns:
         (tags_dict, error_type, error_message)
     """
@@ -84,7 +84,11 @@ def extract_tags_with_fallback(
     except Exception as primary_exc:
         if use_wd14_fallback and primary_tagger != "wd14":
             try:
-                return extract_wd14_tags(image_path, model_name=wd14_model), type(primary_exc).__name__, str(primary_exc)
+                return (
+                    extract_wd14_tags(image_path, model_name=wd14_model),
+                    type(primary_exc).__name__,
+                    str(primary_exc),
+                )
             except Exception as fallback_exc:
                 return None, type(fallback_exc).__name__, str(fallback_exc)
         return None, type(primary_exc).__name__, str(primary_exc)

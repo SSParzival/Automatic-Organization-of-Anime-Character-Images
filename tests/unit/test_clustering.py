@@ -2,10 +2,11 @@
 Unit tests for clustering: algorithm, centroids, diagnostics, and review flagging.
 """
 
+import tempfile
 import unittest
 from pathlib import Path
-import tempfile
 from unittest.mock import patch
+
 import numpy as np
 import pandas as pd
 
@@ -18,7 +19,6 @@ from anime_character_organizer.clustering.diagnostics import (
     build_folder_assignment_manifest,
     calculate_cluster_summary,
     flag_cluster_review_items,
-    sample_representative_and_boundary_rows,
 )
 from anime_character_organizer.workflows.cluster import run_clustering
 
@@ -58,14 +58,16 @@ class TestClustering(unittest.TestCase):
         self.assertTrue(np.all(dists >= 0))
 
     def test_diagnostics_and_review_flags(self):
-        df = pd.DataFrame({
-            "embedding_row": np.arange(4),
-            "cluster_label": [0, 0, -1, 1],
-            "cluster_probability": [0.95, 0.10, 0.0, 0.90],
-            "outlier_score": [0.05, 0.20, 1.0, 0.99],
-            "needs_review": [False, False, False, False],
-            "distance_to_centroid": [0.1, 0.5, np.nan, 0.2],
-        })
+        df = pd.DataFrame(
+            {
+                "embedding_row": np.arange(4),
+                "cluster_label": [0, 0, -1, 1],
+                "cluster_probability": [0.95, 0.10, 0.0, 0.90],
+                "outlier_score": [0.05, 0.20, 1.0, 0.99],
+                "needs_review": [False, False, False, False],
+                "distance_to_centroid": [0.1, 0.5, np.nan, 0.2],
+            }
+        )
 
         flagged_df, thresh = flag_cluster_review_items(
             df,
@@ -89,16 +91,18 @@ class TestClustering(unittest.TestCase):
         self.assertEqual(assignment_df.iloc[2]["proposed_folder"], "_needs_review_noise")
 
     def test_calculate_cluster_summary(self):
-        df = pd.DataFrame({
-            "embedding_row": [0, 1, 2],
-            "cluster_label": [0, 0, 0],
-            "cluster_folder_stub": ["cluster_00000_unknown"] * 3,
-            "cluster_probability": [0.8, 0.9, 0.85],
-            "outlier_score": [0.1, 0.2, 0.15],
-            "distance_to_centroid": [0.1, 0.2, 0.15],
-            "requires_manual_review": [False, False, False],
-            "selected_region_type": ["head", "head", "person"],
-        })
+        df = pd.DataFrame(
+            {
+                "embedding_row": [0, 1, 2],
+                "cluster_label": [0, 0, 0],
+                "cluster_folder_stub": ["cluster_00000_unknown"] * 3,
+                "cluster_probability": [0.8, 0.9, 0.85],
+                "outlier_score": [0.1, 0.2, 0.15],
+                "distance_to_centroid": [0.1, 0.2, 0.15],
+                "requires_manual_review": [False, False, False],
+                "selected_region_type": ["head", "head", "person"],
+            }
+        )
 
         summary_df = calculate_cluster_summary(df)
         self.assertEqual(len(summary_df), 1)
@@ -121,17 +125,19 @@ class TestClustering(unittest.TestCase):
         self.assertEqual(len(set(labels) - {-1}), 2)
 
     def test_separate_review_folders_toggle(self):
-        df = pd.DataFrame({
-            "embedding_row": [0, 1],
-            "cluster_label": [0, 0],
-            "cluster_folder_stub": ["cluster_00000_unknown", "cluster_00000_unknown"],
-            "cluster_probability": [0.9, 0.2],
-            "outlier_score": [0.1, 0.9],
-            "needs_review": [False, True],
-            "distance_to_centroid": [0.1, 0.4],
-            "is_noise": [False, False],
-            "requires_manual_review": [False, True],
-        })
+        df = pd.DataFrame(
+            {
+                "embedding_row": [0, 1],
+                "cluster_label": [0, 0],
+                "cluster_folder_stub": ["cluster_00000_unknown", "cluster_00000_unknown"],
+                "cluster_probability": [0.9, 0.2],
+                "outlier_score": [0.1, 0.9],
+                "needs_review": [False, True],
+                "distance_to_centroid": [0.1, 0.4],
+                "is_noise": [False, False],
+                "requires_manual_review": [False, True],
+            }
+        )
 
         # By default (separate_review_folders=False), both stay in unified cluster folder
         unified = build_folder_assignment_manifest(df, separate_review_folders=False)
@@ -155,14 +161,16 @@ class TestClustering(unittest.TestCase):
             (embed_run / "arrays").mkdir(parents=True)
             (embed_run / "tables").mkdir()
             np.save(embed_run / "arrays" / "ccip_embeddings_l2.npy", embeddings)
-            pd.DataFrame({
-                "embedding_row": [0, 1, 2],
-                "crop_path": ["missing0.png", "missing1.png", "missing2.png"],
-                "source_path": ["source0.png", "source1.png", "source2.png"],
-                "relative_path": ["0.png", "1.png", "2.png"],
-                "needs_review": [False, False, False],
-                "selected_region_type": ["head", "head", "head"],
-            }).to_csv(embed_run / "tables" / "successful_embedding_manifest.csv", index=False)
+            pd.DataFrame(
+                {
+                    "embedding_row": [0, 1, 2],
+                    "crop_path": ["missing0.png", "missing1.png", "missing2.png"],
+                    "source_path": ["source0.png", "source1.png", "source2.png"],
+                    "relative_path": ["0.png", "1.png", "2.png"],
+                    "needs_review": [False, False, False],
+                    "selected_region_type": ["head", "head", "head"],
+                }
+            ).to_csv(embed_run / "tables" / "successful_embedding_manifest.csv", index=False)
 
             with patch(
                 "anime_character_organizer.workflows.cluster.fit_hdbscan",

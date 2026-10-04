@@ -5,6 +5,7 @@ Contact sheet rendering for visual inspection of image clusters, crops, and revi
 import math
 from pathlib import Path
 from typing import List, Optional, Union
+
 import pandas as pd
 from PIL import Image, ImageDraw, ImageOps
 
@@ -21,7 +22,7 @@ def create_contact_sheet(
 ) -> bool:
     """
     Render a grid contact sheet from a list of image paths.
-    
+
     Args:
         image_paths: Paths to image files to display.
         output_path: Destination path for the saved JPEG sheet.
@@ -29,7 +30,7 @@ def create_contact_sheet(
         columns: Number of thumbnail columns in the grid.
         title: Optional title string rendered in a banner across the top.
         quality: JPEG compression quality (0-100).
-        
+
     Returns:
         True if at least one image was rendered and saved, False otherwise.
     """

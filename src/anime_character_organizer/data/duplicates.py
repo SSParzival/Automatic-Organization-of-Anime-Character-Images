@@ -4,12 +4,12 @@ Duplicate detection algorithms: exact SHA-256 grouping and perceptual pHash clus
 
 from collections import defaultdict
 from typing import Any, Dict, List, Tuple
+
 import pandas as pd
 from tqdm.auto import tqdm
 
 from ..utils.hashing import hamming_int, hash_hex_to_int
 from ..utils.structures import BKTree, UnionFind
-
 
 EXACT_DUPLICATE_COLUMNS = [
     "exact_group_id",
@@ -52,7 +52,7 @@ PERCEPTUAL_GROUP_COLUMNS = [
 def find_exact_duplicates(valid_df: pd.DataFrame) -> pd.DataFrame:
     """
     Group exact duplicates sharing the same SHA-256 digest.
-    
+
     The file with the lexicographically earliest relative_path is selected as representative.
     """
     exact_duplicate_rows: List[Dict[str, Any]] = []
@@ -69,19 +69,21 @@ def find_exact_duplicates(valid_df: pd.DataFrame) -> pd.DataFrame:
         representative_path = group.iloc[0]["path"]
 
         for rank, (_, row) in enumerate(group.iterrows()):
-            exact_duplicate_rows.append({
-                "exact_group_id": f"exact_{group_id:06d}",
-                "sha256": sha_value,
-                "group_size": len(group),
-                "is_representative": rank == 0,
-                "representative_path": representative_path,
-                "path": row["path"],
-                "relative_path": row.get("relative_path"),
-                "file_size_bytes": row.get("file_size_bytes"),
-                "width": row.get("width"),
-                "height": row.get("height"),
-                "format": row.get("format"),
-            })
+            exact_duplicate_rows.append(
+                {
+                    "exact_group_id": f"exact_{group_id:06d}",
+                    "sha256": sha_value,
+                    "group_size": len(group),
+                    "is_representative": rank == 0,
+                    "representative_path": representative_path,
+                    "path": row["path"],
+                    "relative_path": row.get("relative_path"),
+                    "file_size_bytes": row.get("file_size_bytes"),
+                    "width": row.get("width"),
+                    "height": row.get("height"),
+                    "format": row.get("format"),
+                }
+            )
 
         group_id += 1
 
@@ -96,7 +98,7 @@ def find_perceptual_duplicates(
     """
     Identify near-duplicate image candidate pairs using a BK-Tree over 64-bit pHash values,
     and group connected components using Union-Find.
-    
+
     Returns:
         (perceptual_candidates_df, perceptual_groups_df)
     """
@@ -136,25 +138,25 @@ def find_perceptual_duplicates(
                 continue
             seen_pairs.add(pair)
 
-            candidate_pairs.append({
-                "path_a": pair[0],
-                "path_b": pair[1],
-                "phash_distance": int(distance),
-            })
+            candidate_pairs.append(
+                {
+                    "path_a": pair[0],
+                    "path_b": pair[1],
+                    "phash_distance": int(distance),
+                }
+            )
 
     perceptual_candidates_df = pd.DataFrame(candidate_pairs, columns=PERCEPTUAL_CANDIDATE_COLUMNS)
     if not candidate_pairs:
         return perceptual_candidates_df, pd.DataFrame(columns=PERCEPTUAL_GROUP_COLUMNS)
 
-    perceptual_candidates_df = perceptual_candidates_df.sort_values(
-        ["phash_distance", "path_a", "path_b"]
-    ).reset_index(drop=True)
+    perceptual_candidates_df = perceptual_candidates_df.sort_values(["phash_distance", "path_a", "path_b"]).reset_index(
+        drop=True
+    )
 
     # Group components using UnionFind
     perceptual_group_rows: List[Dict[str, Any]] = []
-    paths_in_pairs = sorted(
-        set(perceptual_candidates_df["path_a"]).union(set(perceptual_candidates_df["path_b"]))
-    )
+    paths_in_pairs = sorted(set(perceptual_candidates_df["path_a"]).union(set(perceptual_candidates_df["path_b"])))
     uf = UnionFind(paths_in_pairs)
 
     for _, row in perceptual_candidates_df.iterrows():
@@ -164,16 +166,10 @@ def find_perceptual_duplicates(
     for path in paths_in_pairs:
         groups[uf.find(path)].append(path)
 
-    path_to_meta = (
-        valid_df.drop_duplicates(subset="path")
-        .set_index("path")
-        .to_dict(orient="index")
-    )
+    path_to_meta = valid_df.drop_duplicates(subset="path").set_index("path").to_dict(orient="index")
 
     group_index = 0
-    for _, group_paths in sorted(
-        groups.items(), key=lambda item: (-len(item[1]), sorted(item[1])[0])
-    ):
+    for _, group_paths in sorted(groups.items(), key=lambda item: (-len(item[1]), sorted(item[1])[0])):
         if len(group_paths) <= 1:
             continue
 
@@ -182,22 +178,24 @@ def find_perceptual_duplicates(
 
         for rank, path in enumerate(group_paths):
             meta = path_to_meta.get(path, {})
-            perceptual_group_rows.append({
-                "perceptual_group_id": f"perceptual_{group_index:06d}",
-                "group_size": len(group_paths),
-                "is_representative": rank == 0,
-                "representative_path": representative_path,
-                "path": path,
-                "relative_path": meta.get("relative_path"),
-                "file_size_bytes": meta.get("file_size_bytes"),
-                "width": meta.get("width"),
-                "height": meta.get("height"),
-                "format": meta.get("format"),
-                "phash": meta.get("phash"),
-                "dhash": meta.get("dhash"),
-                "whash": meta.get("whash"),
-                "colorhash": meta.get("colorhash"),
-            })
+            perceptual_group_rows.append(
+                {
+                    "perceptual_group_id": f"perceptual_{group_index:06d}",
+                    "group_size": len(group_paths),
+                    "is_representative": rank == 0,
+                    "representative_path": representative_path,
+                    "path": path,
+                    "relative_path": meta.get("relative_path"),
+                    "file_size_bytes": meta.get("file_size_bytes"),
+                    "width": meta.get("width"),
+                    "height": meta.get("height"),
+                    "format": meta.get("format"),
+                    "phash": meta.get("phash"),
+                    "dhash": meta.get("dhash"),
+                    "whash": meta.get("whash"),
+                    "colorhash": meta.get("colorhash"),
+                }
+            )
 
         group_index += 1
 

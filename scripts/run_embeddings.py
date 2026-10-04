@@ -4,8 +4,8 @@ CLI script to run Stage 3: CCIP Embedding Extraction and Normalization.
 """
 
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from anime_character_organizer.workflows.embed import run_embedding_extraction
 

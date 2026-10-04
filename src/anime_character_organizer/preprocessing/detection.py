@@ -3,6 +3,7 @@ Anime character head and person detection wrappers and selection heuristics.
 """
 
 from typing import Any, Dict, List, Optional, Tuple
+
 from PIL import Image
 
 from .geometry import Box, box_area, clamp_box
@@ -48,6 +49,7 @@ def detect_heads_safe(
     """Safe wrapper around imgutils.detect.detect_heads."""
     try:
         from imgutils.detect import detect_heads
+
         raw_dets = detect_heads(image, conf_threshold=conf_threshold, iou_threshold=iou_threshold)
         width, height = image.size
         return [
@@ -67,6 +69,7 @@ def detect_persons_safe(
     """Safe wrapper around imgutils.detect.detect_person."""
     try:
         from imgutils.detect import detect_person
+
         raw_dets = detect_person(image, conf_threshold=conf_threshold, iou_threshold=iou_threshold)
         width, height = image.size
         return [

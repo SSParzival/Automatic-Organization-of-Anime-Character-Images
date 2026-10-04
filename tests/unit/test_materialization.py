@@ -2,9 +2,10 @@
 Unit tests for folder materialization, destination planning, file operations, and validation.
 """
 
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
+
 import pandas as pd
 
 from anime_character_organizer.materialization.operations import (
@@ -44,20 +45,22 @@ class TestMaterialization(unittest.TestCase):
             src1.touch()
             src2.touch()
 
-            assignment_df = pd.DataFrame([
-                {
-                    "embedding_row": 0,
-                    "cluster_label": 1,
-                    "proposed_folder": "cluster_00001_unknown",
-                    "source_path": src1.as_posix(),
-                },
-                {
-                    "embedding_row": 1,
-                    "cluster_label": 1,
-                    "proposed_folder": "cluster_00001_unknown",
-                    "source_path": src2.as_posix(),
-                },
-            ])
+            assignment_df = pd.DataFrame(
+                [
+                    {
+                        "embedding_row": 0,
+                        "cluster_label": 1,
+                        "proposed_folder": "cluster_00001_unknown",
+                        "source_path": src1.as_posix(),
+                    },
+                    {
+                        "embedding_row": 1,
+                        "cluster_label": 1,
+                        "proposed_folder": "cluster_00001_unknown",
+                        "source_path": src2.as_posix(),
+                    },
+                ]
+            )
 
             plan_df = build_materialization_plan(assignment_df, out_dir)
             self.assertEqual(len(plan_df), 2)
@@ -115,12 +118,16 @@ class TestMaterialization(unittest.TestCase):
             dest = base / "dest.txt"
             dest.write_text("content 123")
 
-            res_df = pd.DataFrame([{
-                "embedding_row": 1,
-                "source_path": src.as_posix(),
-                "destination_path": dest.as_posix(),
-                "status": "ok",
-            }])
+            res_df = pd.DataFrame(
+                [
+                    {
+                        "embedding_row": 1,
+                        "source_path": src.as_posix(),
+                        "destination_path": dest.as_posix(),
+                        "status": "ok",
+                    }
+                ]
+            )
 
             val_df = validate_materialized_files(res_df)
             self.assertTrue(val_df.iloc[0]["is_valid"])

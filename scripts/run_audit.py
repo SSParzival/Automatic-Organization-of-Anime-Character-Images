@@ -4,8 +4,8 @@ CLI script to run Stage 1: Dataset Audit and Duplicate Detection.
 """
 
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from anime_character_organizer.workflows.audit import run_dataset_audit
 

@@ -2,11 +2,11 @@
 Integration tests: Running pipeline stages sequentially with temporary test fixtures.
 """
 
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
+
 import numpy as np
-import pandas as pd
 from PIL import Image
 
 from anime_character_organizer.workflows.audit import run_dataset_audit

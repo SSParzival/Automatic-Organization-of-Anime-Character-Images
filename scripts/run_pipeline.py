@@ -4,8 +4,8 @@ CLI script to run the complete end-to-end anime character organization pipeline.
 """
 
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from anime_character_organizer.workflows.pipeline import run_full_pipeline
 

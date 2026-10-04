@@ -4,6 +4,7 @@ Image file validation functions using PIL.
 
 from pathlib import Path
 from typing import Optional, Tuple, Union
+
 from PIL import Image, ImageOps
 
 Image.MAX_IMAGE_PIXELS = 300_000_000
@@ -13,7 +14,7 @@ def validate_image_file(path: Union[str, Path]) -> Tuple[bool, Optional[str], Op
     """
     Validate that an image file exists, is non-empty, can be opened and verified,
     and has positive dimensions.
-    
+
     Returns:
         (is_valid, error_type, error_message)
     """

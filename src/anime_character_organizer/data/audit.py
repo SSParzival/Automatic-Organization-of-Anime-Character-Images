@@ -2,10 +2,11 @@
 Dataset scanning, image verification, and cryptographic/perceptual hash computation.
 """
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
+
 import imagehash
 import pandas as pd
 from PIL import Image, ImageOps
@@ -24,11 +25,11 @@ def scan_candidate_files(
 ) -> List[Path]:
     """
     Recursively scan directory for files matching specified extensions.
-    
+
     Args:
         input_dir: Source folder to scan.
         valid_extensions: Set of valid lowercase file extensions including dot (e.g. {'.jpg', '.png'}).
-        
+
     Returns:
         Sorted list of matching Path objects.
     """
@@ -125,7 +126,7 @@ def audit_images(
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Audit and hash candidate image files in parallel.
-    
+
     Returns:
         (metadata_df, valid_df, invalid_df)
     """
@@ -135,10 +136,7 @@ def audit_images(
     records: List[Dict[str, Any]] = []
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {
-            executor.submit(inspect_image, path, input_dir): path
-            for path in candidate_files
-        }
+        futures = {executor.submit(inspect_image, path, input_dir): path for path in candidate_files}
         iterator = as_completed(futures)
         if show_progress:
             iterator = tqdm(iterator, total=len(futures), desc="Validating and hashing images")
@@ -148,30 +146,32 @@ def audit_images(
             try:
                 records.append(future.result())
             except Exception as exc:
-                records.append({
-                    "path": path_to_posix(path),
-                    "relative_path": safe_relative_path(path, input_dir),
-                    "filename": path.name,
-                    "stem": path.stem,
-                    "extension": path.suffix.lower(),
-                    "parent": path.parent.as_posix(),
-                    "file_size_bytes": None,
-                    "status": "invalid",
-                    "error_type": type(exc).__name__,
-                    "error_message": str(exc),
-                    "format": None,
-                    "width": None,
-                    "height": None,
-                    "mode": None,
-                    "is_animated": None,
-                    "n_frames": None,
-                    "sha256": None,
-                    "phash": None,
-                    "dhash": None,
-                    "whash": None,
-                    "colorhash": None,
-                    "processed_at": now_iso(),
-                })
+                records.append(
+                    {
+                        "path": path_to_posix(path),
+                        "relative_path": safe_relative_path(path, input_dir),
+                        "filename": path.name,
+                        "stem": path.stem,
+                        "extension": path.suffix.lower(),
+                        "parent": path.parent.as_posix(),
+                        "file_size_bytes": None,
+                        "status": "invalid",
+                        "error_type": type(exc).__name__,
+                        "error_message": str(exc),
+                        "format": None,
+                        "width": None,
+                        "height": None,
+                        "mode": None,
+                        "is_animated": None,
+                        "n_frames": None,
+                        "sha256": None,
+                        "phash": None,
+                        "dhash": None,
+                        "whash": None,
+                        "colorhash": None,
+                        "processed_at": now_iso(),
+                    }
+                )
 
     ordered_columns = [
         "path",

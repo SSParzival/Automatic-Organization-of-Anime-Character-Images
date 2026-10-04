@@ -4,6 +4,7 @@ Data type coercion and serialization helpers.
 
 import json
 from typing import Any, Dict, List, Optional
+
 import numpy as np
 import pandas as pd
 
@@ -77,6 +78,7 @@ def dataframe_to_json_records(df: pd.DataFrame, max_rows: Optional[int] = None) 
 def safe_read_csv(path: Any, **kwargs: Any) -> pd.DataFrame:
     """Read CSV safely, returning an empty DataFrame if the file is missing, empty, or unparseable."""
     from pathlib import Path
+
     p = Path(path)
     if not p.exists() or p.stat().st_size == 0:
         return pd.DataFrame()

@@ -2,19 +2,20 @@
 Workflow orchestrator for Stage 2: Representative set selection and crop preparation.
 """
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
 import json
 import os
-from pathlib import Path
 import platform
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
+
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from ..exceptions import ConfigurationError, RunNotFoundError
+from ..exceptions import ConfigurationError
 from ..preprocessing.cropping import add_review_flags, process_image_for_crop
 from ..utils.paths import normalize_path_string
 from ..utils.runs import find_latest_run
@@ -87,7 +88,11 @@ def run_crop_preparation(
         excluded_exact_paths = set(non_rep_exact["path"].tolist())
 
     excluded_perceptual_paths = set()
-    if use_perceptual_representatives and not perceptual_groups_df.empty and "is_representative" in perceptual_groups_df.columns:
+    if (
+        use_perceptual_representatives
+        and not perceptual_groups_df.empty
+        and "is_representative" in perceptual_groups_df.columns
+    ):
         perceptual_df = perceptual_groups_df.copy()
         perceptual_df["path"] = perceptual_df["path"].map(normalize_path_string)
         non_rep_perceptual = perceptual_df[~perceptual_df["is_representative"].astype(bool)]
@@ -95,7 +100,9 @@ def run_crop_preparation(
 
     working_df["excluded_exact_duplicate"] = working_df["path"].isin(excluded_exact_paths)
     working_df["excluded_perceptual_duplicate"] = working_df["path"].isin(excluded_perceptual_paths)
-    working_df["selected_for_detection"] = ~working_df["excluded_exact_duplicate"] & ~working_df["excluded_perceptual_duplicate"]
+    working_df["selected_for_detection"] = (
+        ~working_df["excluded_exact_duplicate"] & ~working_df["excluded_perceptual_duplicate"]
+    )
 
     selected_df = working_df[working_df["selected_for_detection"]].copy().reset_index(drop=True)
     selected_df.insert(0, "image_index", np.arange(len(selected_df), dtype=int))
@@ -137,14 +144,16 @@ def run_crop_preparation(
                 crop_records.append(future.result())
             except Exception as exc:
                 idx = futures[future]
-                crop_records.append({
-                    "image_index": idx,
-                    "crop_id": f"img_{idx:07d}_error",
-                    "status": "error",
-                    "error_type": type(exc).__name__,
-                    "error_message": str(exc),
-                    "processed_at": now_iso(),
-                })
+                crop_records.append(
+                    {
+                        "image_index": idx,
+                        "crop_id": f"img_{idx:07d}_error",
+                        "status": "error",
+                        "error_type": type(exc).__name__,
+                        "error_message": str(exc),
+                        "processed_at": now_iso(),
+                    }
+                )
 
     crops_df = pd.DataFrame(crop_records).sort_values("image_index").reset_index(drop=True)
     review_df = add_review_flags(crops_df)
@@ -195,12 +204,14 @@ def run_crop_preparation(
             thumb_size=180,
             columns=5,
         )
-        contact_sheet_rows.append({
-            "sheet_name": sheet_name,
-            "image_count": len(image_paths),
-            "created": bool(created),
-            "path": output_path.as_posix() if created else None,
-        })
+        contact_sheet_rows.append(
+            {
+                "sheet_name": sheet_name,
+                "image_count": len(image_paths),
+                "created": bool(created),
+                "path": output_path.as_posix() if created else None,
+            }
+        )
 
     contact_sheets_df = pd.DataFrame(contact_sheet_rows)
     contact_sheets_path = tables_dir / "contact_sheets.csv"

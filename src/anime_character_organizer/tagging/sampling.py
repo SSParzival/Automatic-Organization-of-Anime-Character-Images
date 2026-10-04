@@ -40,5 +40,9 @@ def select_cluster_samples(cluster_df: pd.DataFrame, max_images: int = 12) -> pd
     rep_df = rep_df.drop_duplicates(subset=["embedding_row"], keep="first").head(max_images).copy()
 
     return rep_df.drop(
-        columns=[c for c in ["distance_to_centroid_sort", "cluster_probability_sort", "outlier_score_sort"] if c in rep_df.columns]
+        columns=[
+            c
+            for c in ["distance_to_centroid_sort", "cluster_probability_sort", "outlier_score_sort"]
+            if c in rep_df.columns
+        ]
     )

@@ -2,9 +2,10 @@
 Unit tests for utils modules.
 """
 
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 from PIL import Image
@@ -13,7 +14,6 @@ from anime_character_organizer.exceptions import RunNotFoundError
 from anime_character_organizer.utils.hashing import (
     hamming_int,
     hash_hex_to_int,
-    imagehash_to_hex,
     sha256_file,
     stable_short_hash,
 )

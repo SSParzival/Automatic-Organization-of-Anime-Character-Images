@@ -4,17 +4,15 @@ Centralized configuration defaults and dataclasses for all pipeline stages.
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Set, Tuple, Optional
+from typing import Optional, Set, Tuple
 
-
-DEFAULT_VALID_EXTENSIONS: Set[str] = {
-    ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tif", ".tiff", ".avif"
-}
+DEFAULT_VALID_EXTENSIONS: Set[str] = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tif", ".tiff", ".avif"}
 
 
 @dataclass
 class AuditConfig:
     """Configuration parameters for dataset audit stage."""
+
     input_dir: Path
     project_dir: Path = Path("./anime_character_pipeline")
     valid_extensions: Set[str] = field(default_factory=lambda: set(DEFAULT_VALID_EXTENSIONS))
@@ -25,6 +23,7 @@ class AuditConfig:
 @dataclass
 class CropConfig:
     """Configuration parameters for crop preparation stage."""
+
     project_dir: Path = Path("./anime_character_pipeline")
     previous_run_dir: Optional[Path] = None
     use_perceptual_representatives: bool = False  # False avoids prematurely dropping images before clustering
@@ -44,6 +43,7 @@ class CropConfig:
 @dataclass
 class EmbeddingConfig:
     """Configuration parameters for CCIP embedding extraction stage."""
+
     project_dir: Path = Path("./anime_character_pipeline")
     previous_run_dir: Optional[Path] = None
     ccip_model: str = "ccip-caformer-24-randaug-pruned"
@@ -57,12 +57,13 @@ class EmbeddingConfig:
 @dataclass
 class ClusteringConfig:
     """Configuration parameters for HDBSCAN clustering stage."""
+
     project_dir: Path = Path("./anime_character_pipeline")
     previous_run_dir: Optional[Path] = None
     embedding_file_name: str = "ccip_embeddings_l2.npy"
     manifest_file_name: str = "successful_embedding_manifest.csv"
     min_cluster_size: int = 2  # Allows pairs and triplets of characters to form clusters
-    min_samples: int = 1       # Reduces reachability penalty in sparse/small clusters
+    min_samples: int = 1  # Reduces reachability penalty in sparse/small clusters
     cluster_selection_epsilon: float = 0.50  # Merges points within close visual distance
     cluster_selection_method: str = "eom"
     metric: str = "euclidean"
@@ -77,6 +78,7 @@ class ClusteringConfig:
 @dataclass
 class MaterializationConfig:
     """Configuration parameters for folder materialization stage."""
+
     project_dir: Path = Path("./anime_character_pipeline")
     previous_run_dir: Optional[Path] = None
     final_output_dir: Optional[Path] = None
@@ -94,6 +96,7 @@ class MaterializationConfig:
 @dataclass
 class TaggingConfig:
     """Configuration parameters for cluster naming with anime tagger stage."""
+
     project_dir: Path = Path("./anime_character_pipeline")
     previous_clustering_run_dir: Optional[Path] = None
     previous_materialization_run_dir: Optional[Path] = None

@@ -2,10 +2,10 @@
 Unit tests for data audit and duplicate detection modules.
 """
 
-from pathlib import Path
 import tempfile
 import unittest
-import pandas as pd
+from pathlib import Path
+
 from PIL import Image
 
 from anime_character_organizer.data.audit import audit_images, inspect_image, scan_candidate_files

@@ -3,6 +3,7 @@ Folder rename planning based on accepted semantic character naming.
 """
 
 from typing import Tuple
+
 import pandas as pd
 
 from ..utils.naming import sanitize_filename_component
@@ -15,7 +16,7 @@ def build_folder_rename_plan(
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Build folder rename plan incorporating accepted character tag suggestions into folder destinations.
-    
+
     Returns:
         (folder_rename_plan_df, folder_rename_preview_df)
     """
@@ -46,9 +47,7 @@ def build_folder_rename_plan(
     plan_df["named_folder"] = plan_df["proposed_folder"]
 
     accepted_mask = (
-        plan_df["accepted_name"]
-        & plan_df["proposed_named_folder"].notna()
-        & plan_df["cluster_label"].ne(-1)
+        plan_df["accepted_name"] & plan_df["proposed_named_folder"].notna() & plan_df["cluster_label"].ne(-1)
     )
 
     plan_df.loc[accepted_mask, "named_folder"] = plan_df.loc[accepted_mask, "proposed_named_folder"]

@@ -4,8 +4,8 @@ CLI script to run Stage 4: HDBSCAN Clustering and Cluster Diagnostics.
 """
 
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from anime_character_organizer.workflows.cluster import run_clustering
 

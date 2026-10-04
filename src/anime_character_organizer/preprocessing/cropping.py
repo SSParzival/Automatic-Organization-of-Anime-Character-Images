@@ -5,12 +5,13 @@ Image cropping, priority-based region extraction (head -> person -> fallback), a
 import json
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
+
 import pandas as pd
 from PIL import Image, ImageOps
 
+from ..utils.time import now_iso
 from .detection import choose_best_detection, detect_heads_safe, detect_persons_safe, detection_to_dict
 from .geometry import clamp_box, expand_box
-from ..utils.time import now_iso
 
 Image.MAX_IMAGE_PIXELS = 300_000_000
 
@@ -23,7 +24,9 @@ def make_crop_id(index_value: int, path_value: Union[str, Path]) -> str:
     return f"img_{int(index_value):07d}_{safe_stem}"
 
 
-def save_rgb_image(image: Image.Image, output_path: Union[str, Path], crop_format: str = "JPEG", quality: int = 95) -> None:
+def save_rgb_image(
+    image: Image.Image, output_path: Union[str, Path], crop_format: str = "JPEG", quality: int = 95
+) -> None:
     """Save PIL image as RGB JPEG or PNG with optimization."""
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -104,8 +107,12 @@ def process_image_for_crop(
             record["detected_persons_count"] = int(len(person_detections))
             record["is_multi_head"] = bool(len(head_detections) > 1)
             record["is_multi_person"] = bool(len(person_detections) > 1)
-            record["head_detections_json"] = json.dumps([detection_to_dict(det) for det in head_detections], ensure_ascii=False)
-            record["person_detections_json"] = json.dumps([detection_to_dict(det) for det in person_detections], ensure_ascii=False)
+            record["head_detections_json"] = json.dumps(
+                [detection_to_dict(det) for det in head_detections], ensure_ascii=False
+            )
+            record["person_detections_json"] = json.dumps(
+                [detection_to_dict(det) for det in person_detections], ensure_ascii=False
+            )
 
             best_head = choose_best_detection(head_detections, width, height)
             best_person = choose_best_detection(person_detections, width, height)
@@ -165,45 +172,33 @@ def add_review_flags(crops_df: pd.DataFrame) -> pd.DataFrame:
     review_df.loc[review_df["status"].ne("ok"), "needs_review"] = True
     review_df.loc[review_df["status"].ne("ok"), "review_reason"] = "crop_error"
 
-    review_df.loc[
-        review_df["selected_region_type"].eq("full_image"),
-        "review_reason"
-    ] = review_df.loc[
-        review_df["selected_region_type"].eq("full_image"),
-        "review_reason"
+    review_df.loc[review_df["selected_region_type"].eq("full_image"), "review_reason"] = review_df.loc[
+        review_df["selected_region_type"].eq("full_image"), "review_reason"
     ].replace("", "no_detection_full_image_fallback")
 
-    review_df.loc[
-        review_df["selected_region_type"].eq("full_image"),
-        "needs_review"
-    ] = True
+    review_df.loc[review_df["selected_region_type"].eq("full_image"), "needs_review"] = True
 
-    review_df.loc[
-        review_df["selected_region_type"].eq("full_image_small_detection_fallback"),
-        "needs_review"
-    ] = True
+    review_df.loc[review_df["selected_region_type"].eq("full_image_small_detection_fallback"), "needs_review"] = True
 
-    review_df.loc[
-        review_df["selected_region_type"].eq("full_image_small_detection_fallback"),
-        "review_reason"
-    ] = "small_detection_full_image_fallback"
+    review_df.loc[review_df["selected_region_type"].eq("full_image_small_detection_fallback"), "review_reason"] = (
+        "small_detection_full_image_fallback"
+    )
 
-    review_df.loc[
-        review_df["is_multi_head"].astype(bool),
-        "needs_review"
-    ] = True
+    review_df.loc[review_df["is_multi_head"].astype(bool), "needs_review"] = True
 
-    review_df.loc[
-        review_df["is_multi_head"].astype(bool) & review_df["review_reason"].eq(""),
-        "review_reason"
-    ] = "multiple_heads_detected"
+    review_df.loc[review_df["is_multi_head"].astype(bool) & review_df["review_reason"].eq(""), "review_reason"] = (
+        "multiple_heads_detected"
+    )
 
     review_df.loc[
         review_df["is_multi_head"].astype(bool) & ~review_df["review_reason"].eq("multiple_heads_detected"),
-        "review_reason"
-    ] = review_df.loc[
-        review_df["is_multi_head"].astype(bool) & ~review_df["review_reason"].eq("multiple_heads_detected"),
-        "review_reason"
-    ] + ";multiple_heads_detected"
+        "review_reason",
+    ] = (
+        review_df.loc[
+            review_df["is_multi_head"].astype(bool) & ~review_df["review_reason"].eq("multiple_heads_detected"),
+            "review_reason",
+        ]
+        + ";multiple_heads_detected"
+    )
 
     return review_df

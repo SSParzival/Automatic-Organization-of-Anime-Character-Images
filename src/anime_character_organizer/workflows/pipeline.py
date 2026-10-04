@@ -3,12 +3,12 @@ End-to-end pipeline orchestrator chaining stages 01 through 06.
 """
 
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Union
 
 from .audit import run_dataset_audit
+from .cluster import run_clustering
 from .crop import run_crop_preparation
 from .embed import run_embedding_extraction
-from .cluster import run_clustering
 from .materialize import run_folder_materialization
 from .naming import run_cluster_naming
 
@@ -28,7 +28,7 @@ def run_full_pipeline(
 ) -> Dict[str, Any]:
     """
     Execute full pipeline from raw input folder to organized folders.
-    
+
     Args:
         input_dir: Source folder with images to organize.
         project_dir: Base directory for run artifacts and organized output.
@@ -41,7 +41,7 @@ def run_full_pipeline(
         run_tagging: If True, executes stage 06 semantic naming after materialization.
         materialization_mode: 'hardlink', 'copy', or 'symlink'.
         show_progress: Whether to display tqdm progress bars.
-        
+
     Returns:
         Dict mapping stage names to their respective result dictionaries.
     """

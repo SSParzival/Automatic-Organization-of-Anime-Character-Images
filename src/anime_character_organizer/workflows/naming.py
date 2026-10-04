@@ -2,18 +2,18 @@
 Workflow orchestrator for Stage 6: Semantic cluster naming with anime image taggers.
 """
 
-from datetime import datetime
 import json
-import os
-from pathlib import Path
 import platform
 import sys
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, Optional, Union
+
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from ..exceptions import ConfigurationError, InvalidImageError, RunNotFoundError
+from ..exceptions import ConfigurationError, InvalidImageError
 from ..materialization.operations import materialize_one_file
 from ..tagging.aggregation import aggregate_cluster_tags
 from ..tagging.extraction import extract_tags_with_fallback
@@ -114,7 +114,9 @@ def run_cluster_naming(
         cluster_work_df = cluster_work_df[~cluster_work_df["requires_manual_review"]].copy()
 
     cluster_sizes = cluster_work_df.groupby("cluster_label").size().reset_index(name="cluster_size")
-    eligible_labels = cluster_sizes[cluster_sizes["cluster_size"].ge(min_cluster_size_to_name)]["cluster_label"].tolist()
+    eligible_labels = cluster_sizes[cluster_sizes["cluster_size"].ge(min_cluster_size_to_name)][
+        "cluster_label"
+    ].tolist()
     cluster_work_df = cluster_work_df[cluster_work_df["cluster_label"].isin(eligible_labels)].copy()
 
     if cluster_work_df.empty:
@@ -137,21 +139,31 @@ def run_cluster_naming(
 
     # Validate tagging inputs
     validation_rows = []
-    val_iter = tqdm(tagging_input_df.iterrows(), total=len(tagging_input_df), desc="Validating tagging images") if show_progress else tagging_input_df.iterrows()
+    val_iter = (
+        tqdm(tagging_input_df.iterrows(), total=len(tagging_input_df), desc="Validating tagging images")
+        if show_progress
+        else tagging_input_df.iterrows()
+    )
     for _, row in val_iter:
         is_valid, err_type, err_msg = validate_image_file(row["crop_path"])
-        validation_rows.append({
-            "tagging_index": int(row["tagging_index"]),
-            "cluster_label": int(row["cluster_label"]),
-            "crop_path": row["crop_path"],
-            "valid_for_tagging": bool(is_valid),
-            "validation_error_type": err_type,
-            "validation_error_message": err_msg,
-        })
+        validation_rows.append(
+            {
+                "tagging_index": int(row["tagging_index"]),
+                "cluster_label": int(row["cluster_label"]),
+                "crop_path": row["crop_path"],
+                "valid_for_tagging": bool(is_valid),
+                "validation_error_type": err_type,
+                "validation_error_message": err_msg,
+            }
+        )
 
     tagging_validation_df = pd.DataFrame(validation_rows)
-    tagging_ready_df = tagging_input_df.merge(tagging_validation_df, on=["tagging_index", "cluster_label", "crop_path"], how="left")
-    tagging_ready_df = tagging_ready_df[tagging_ready_df["valid_for_tagging"].astype(bool)].copy().reset_index(drop=True)
+    tagging_ready_df = tagging_input_df.merge(
+        tagging_validation_df, on=["tagging_index", "cluster_label", "crop_path"], how="left"
+    )
+    tagging_ready_df = (
+        tagging_ready_df[tagging_ready_df["valid_for_tagging"].astype(bool)].copy().reset_index(drop=True)
+    )
 
     tagging_validation_df.to_csv(tables_dir / "tagging_validation.csv", index=False)
     tagging_ready_df.to_csv(tables_dir / "tagging_ready_manifest.csv", index=False)
@@ -161,7 +173,11 @@ def run_cluster_naming(
 
     # Tag images
     tagging_rows = []
-    tag_iter = tqdm(tagging_ready_df.iterrows(), total=len(tagging_ready_df), desc="Tagging cluster crops") if show_progress else tagging_ready_df.iterrows()
+    tag_iter = (
+        tqdm(tagging_ready_df.iterrows(), total=len(tagging_ready_df), desc="Tagging cluster crops")
+        if show_progress
+        else tagging_ready_df.iterrows()
+    )
 
     for _, row in tag_iter:
         tags, fallback_err_type, fallback_err_msg = extract_tags_with_fallback(
@@ -173,7 +189,39 @@ def run_cluster_naming(
         )
 
         if tags is None:
-            tagging_rows.append({
+            tagging_rows.append(
+                {
+                    "tagging_index": int(row["tagging_index"]),
+                    "embedding_row": int(row["embedding_row"]),
+                    "cluster_label": int(row["cluster_label"]),
+                    "cluster_folder_stub": row["cluster_folder_stub"],
+                    "relative_path": row.get("relative_path"),
+                    "crop_path": row["crop_path"],
+                    "source_path": row["source_path"],
+                    "tagging_status": "error",
+                    "tagger_used": None,
+                    "error_type": fallback_err_type,
+                    "error_message": fallback_err_msg,
+                    "character_tags_json": "{}",
+                    "general_tags_json": "{}",
+                    "top_character_tag": None,
+                    "top_character_score": np.nan,
+                    "processed_at": now_iso(),
+                }
+            )
+            continue
+
+        char_tags = tags.get("character_tags", {}) or {}
+        gen_tags = tags.get("general_tags", {}) or {}
+        filtered_char_tags = {k: v for k, v in char_tags.items() if float(v) >= min_character_score}
+
+        top_char_tag, top_char_score = (
+            max(filtered_char_tags.items(), key=lambda x: x[1]) if filtered_char_tags else (None, np.nan)
+        )
+        top_gen_tag, top_gen_score = max(gen_tags.items(), key=lambda x: x[1]) if gen_tags else (None, np.nan)
+
+        tagging_rows.append(
+            {
                 "tagging_index": int(row["tagging_index"]),
                 "embedding_row": int(row["embedding_row"]),
                 "cluster_label": int(row["cluster_label"]),
@@ -181,45 +229,19 @@ def run_cluster_naming(
                 "relative_path": row.get("relative_path"),
                 "crop_path": row["crop_path"],
                 "source_path": row["source_path"],
-                "tagging_status": "error",
-                "tagger_used": None,
-                "error_type": fallback_err_type,
-                "error_message": fallback_err_msg,
-                "character_tags_json": "{}",
-                "general_tags_json": "{}",
-                "top_character_tag": None,
-                "top_character_score": np.nan,
+                "tagging_status": "ok",
+                "tagger_used": tags.get("tagger"),
+                "error_type": None,
+                "error_message": None,
+                "character_tags_json": safe_json_dumps(filtered_char_tags),
+                "general_tags_json": safe_json_dumps(gen_tags),
+                "top_character_tag": top_char_tag,
+                "top_character_score": float(top_char_score) if pd.notna(top_char_score) else np.nan,
+                "top_general_tag": top_gen_tag,
+                "top_general_score": float(top_gen_score) if pd.notna(top_gen_score) else np.nan,
                 "processed_at": now_iso(),
-            })
-            continue
-
-        char_tags = tags.get("character_tags", {}) or {}
-        gen_tags = tags.get("general_tags", {}) or {}
-        filtered_char_tags = {k: v for k, v in char_tags.items() if float(v) >= min_character_score}
-
-        top_char_tag, top_char_score = (max(filtered_char_tags.items(), key=lambda x: x[1]) if filtered_char_tags else (None, np.nan))
-        top_gen_tag, top_gen_score = (max(gen_tags.items(), key=lambda x: x[1]) if gen_tags else (None, np.nan))
-
-        tagging_rows.append({
-            "tagging_index": int(row["tagging_index"]),
-            "embedding_row": int(row["embedding_row"]),
-            "cluster_label": int(row["cluster_label"]),
-            "cluster_folder_stub": row["cluster_folder_stub"],
-            "relative_path": row.get("relative_path"),
-            "crop_path": row["crop_path"],
-            "source_path": row["source_path"],
-            "tagging_status": "ok",
-            "tagger_used": tags.get("tagger"),
-            "error_type": None,
-            "error_message": None,
-            "character_tags_json": safe_json_dumps(filtered_char_tags),
-            "general_tags_json": safe_json_dumps(gen_tags),
-            "top_character_tag": top_char_tag,
-            "top_character_score": float(top_char_score) if pd.notna(top_char_score) else np.nan,
-            "top_general_tag": top_gen_tag,
-            "top_general_score": float(top_gen_score) if pd.notna(top_gen_score) else np.nan,
-            "processed_at": now_iso(),
-        })
+            }
+        )
 
     tagging_manifest_df = pd.DataFrame(tagging_rows)
     tagging_manifest_path = tables_dir / "tagging_manifest.csv"
@@ -252,7 +274,6 @@ def run_cluster_naming(
     for _, srow in cluster_name_suggestions_df.iterrows():
         lbl = int(srow["cluster_label"])
         stub = srow["cluster_folder_stub"]
-        c_tagging = tagging_manifest_df[tagging_manifest_df["cluster_label"].eq(lbl)]
         meta = {
             "cluster_label": lbl,
             "cluster_folder_stub": stub,
@@ -275,8 +296,9 @@ def run_cluster_naming(
             json.dump(meta, f, ensure_ascii=False, indent=2)
         metadata_rows.append({"cluster_label": lbl, "cluster_folder_stub": stub, "metadata_path": meta_p.as_posix()})
 
+    metadata_index_path = tables_dir / "cluster_naming_metadata_index.csv"
     metadata_index_df = pd.DataFrame(metadata_rows)
-    metadata_index_df.to_csv(tables_dir / "cluster_naming_metadata_index.csv", index=False)
+    metadata_index_df.to_csv(metadata_index_path, index=False)
 
     # Naming contact sheets
     contact_sheet_rows = []
@@ -290,15 +312,17 @@ def run_cluster_naming(
         out_sheet = contact_sheets_dir / f"{sanitize_filename_component(pname, fallback=stub)}.jpg"
         title = f"{pname} | accepted={bool(srow['accepted_name'])} | score={srow['best_weighted_score']:.3f}"
         created = create_contact_sheet(cpaths, out_sheet, title=title)
-        contact_sheet_rows.append({
-            "cluster_label": lbl,
-            "cluster_folder_stub": stub,
-            "proposed_named_folder": pname,
-            "accepted_name": bool(srow["accepted_name"]),
-            "image_count": len(cpaths),
-            "created": bool(created),
-            "contact_sheet_path": out_sheet.as_posix() if created else None,
-        })
+        contact_sheet_rows.append(
+            {
+                "cluster_label": lbl,
+                "cluster_folder_stub": stub,
+                "proposed_named_folder": pname,
+                "accepted_name": bool(srow["accepted_name"]),
+                "image_count": len(cpaths),
+                "created": bool(created),
+                "contact_sheet_path": out_sheet.as_posix() if created else None,
+            }
+        )
 
     naming_sheets_df = pd.DataFrame(contact_sheet_rows)
     naming_sheets_df.to_csv(tables_dir / "naming_contact_sheets.csv", index=False)
@@ -322,7 +346,9 @@ def run_cluster_naming(
             dest_key = dest_p.as_posix()
             cnt = 1
             while dest_key in used_destinations or dest_p.exists():
-                base_fn = f"{pfx}__{sanitize_filename_component(src_p.stem, fallback='image')}__dup{cnt:03d}{src_p.suffix}"
+                base_fn = (
+                    f"{pfx}__{sanitize_filename_component(src_p.stem, fallback='image')}__dup{cnt:03d}{src_p.suffix}"
+                )
                 dest_p = named_output_dir / folder_n / base_fn
                 dest_key = dest_p.as_posix()
                 cnt += 1
@@ -335,20 +361,22 @@ def run_cluster_naming(
                 on_existing=on_existing,
                 allow_hardlink_fallback_to_copy=allow_hardlink_fallback_to_copy,
             )
-            named_plan_rows.append({
-                "embedding_row": row["embedding_row"],
-                "source_path": src_p.as_posix(),
-                "named_destination_path": dest_p.as_posix(),
-                "named_folder": folder_n,
-                "cluster_label": row["cluster_label"],
-                "accepted_name": row["accepted_name"],
-                "suggested_character_tag": row.get("suggested_character_tag"),
-                "status": res["status"],
-                "operation_used": res["operation_used"],
-                "error_type": res["error_type"],
-                "error_message": res["error_message"],
-                "processed_at": now_iso(),
-            })
+            named_plan_rows.append(
+                {
+                    "embedding_row": row["embedding_row"],
+                    "source_path": src_p.as_posix(),
+                    "named_destination_path": dest_p.as_posix(),
+                    "named_folder": folder_n,
+                    "cluster_label": row["cluster_label"],
+                    "accepted_name": row["accepted_name"],
+                    "suggested_character_tag": row.get("suggested_character_tag"),
+                    "status": res["status"],
+                    "operation_used": res["operation_used"],
+                    "error_type": res["error_type"],
+                    "error_message": res["error_message"],
+                    "processed_at": now_iso(),
+                }
+            )
 
         named_materialization_df = pd.DataFrame(named_plan_rows)
         named_materialization_df.to_csv(tables_dir / "named_materialization_result.csv", index=False)
@@ -362,9 +390,14 @@ def run_cluster_naming(
         "primary_tagger": primary_tagger,
         "total_clusters_evaluated": len(cluster_name_suggestions_df),
         "candidate_clusters": len(cluster_name_suggestions_df),
-        "accepted_character_names": int(cluster_name_suggestions_df["accepted_name"].sum()) if not cluster_name_suggestions_df.empty else 0,
-        "named_clusters": int(cluster_name_suggestions_df["accepted_name"].sum()) if not cluster_name_suggestions_df.empty else 0,
-        "unnamed_clusters": len(cluster_name_suggestions_df) - (int(cluster_name_suggestions_df["accepted_name"].sum()) if not cluster_name_suggestions_df.empty else 0),
+        "accepted_character_names": int(cluster_name_suggestions_df["accepted_name"].sum())
+        if not cluster_name_suggestions_df.empty
+        else 0,
+        "named_clusters": int(cluster_name_suggestions_df["accepted_name"].sum())
+        if not cluster_name_suggestions_df.empty
+        else 0,
+        "unnamed_clusters": len(cluster_name_suggestions_df)
+        - (int(cluster_name_suggestions_df["accepted_name"].sum()) if not cluster_name_suggestions_df.empty else 0),
         "total_tagged_images": len(tagging_manifest_df),
         "tagging_errors": int(tagging_manifest_df["tagging_status"].ne("ok").sum()),
         "create_named_output": create_named_output,

@@ -2,16 +2,15 @@
 Workflow orchestrator for Stage 1: Dataset audit, validation, and duplicate detection.
 """
 
-from datetime import datetime
 import json
 import os
-from pathlib import Path
 import platform
 import sys
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, Optional, Set, Union
-import pandas as pd
 
-from ..config import AuditConfig, DEFAULT_VALID_EXTENSIONS
+from ..config import DEFAULT_VALID_EXTENSIONS
 from ..data.audit import audit_images, scan_candidate_files
 from ..data.duplicates import find_exact_duplicates, find_perceptual_duplicates
 from ..exceptions import ConfigurationError
@@ -28,7 +27,7 @@ def run_dataset_audit(
 ) -> Dict[str, Any]:
     """
     Execute complete Stage 1 dataset audit workflow.
-    
+
     Returns:
         Dict containing run_dir, tables, summary, and path mappings.
     """
@@ -107,11 +106,15 @@ def run_dataset_audit(
         "total_scanned_files": int(len(metadata_df)),
         "valid_images": int(len(valid_df)),
         "invalid_images": int(len(invalid_df)),
-        "exact_duplicate_groups": int(exact_duplicates_df["exact_group_id"].nunique()) if not exact_duplicates_df.empty else 0,
+        "exact_duplicate_groups": int(exact_duplicates_df["exact_group_id"].nunique())
+        if not exact_duplicates_df.empty
+        else 0,
         "exact_duplicate_files_involved": int(len(exact_duplicates_df)),
         "perceptual_hash_threshold": int(phash_threshold),
         "perceptual_duplicate_candidate_pairs": int(len(perceptual_candidates_df)),
-        "perceptual_duplicate_groups": int(perceptual_groups_df["perceptual_group_id"].nunique()) if not perceptual_groups_df.empty else 0,
+        "perceptual_duplicate_groups": int(perceptual_groups_df["perceptual_group_id"].nunique())
+        if not perceptual_groups_df.empty
+        else 0,
         "perceptual_duplicate_files_involved": int(len(perceptual_groups_df)),
         "python": sys.version,
         "platform": platform.platform(),

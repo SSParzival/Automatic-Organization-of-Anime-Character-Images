@@ -4,8 +4,8 @@ CLI script to run Stage 5: Non-Destructive Folder Materialization.
 """
 
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from anime_character_organizer.workflows.materialize import run_folder_materialization
 

@@ -2,25 +2,23 @@
 Workflow orchestrator for Stage 5: Non-destructive folder materialization.
 """
 
-from datetime import datetime
 import json
-import os
-from pathlib import Path
-import platform
 import shutil
-import sys
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, Optional, Union
+
 import pandas as pd
 from tqdm.auto import tqdm
 
-from ..exceptions import ConfigurationError, RunNotFoundError
+from ..exceptions import ConfigurationError
 from ..materialization.operations import materialize_one_file
 from ..materialization.planner import build_materialization_plan
 from ..materialization.validation import validate_materialized_files
 from ..utils.naming import sanitize_folder_name
 from ..utils.paths import normalize_path_string
 from ..utils.runs import find_latest_run
-from ..utils.serialization import dataframe_to_json_records, safe_bool
+from ..utils.serialization import safe_bool
 from ..utils.time import now_iso
 from ..visualization.contact_sheet import create_contact_sheet
 
@@ -111,7 +109,9 @@ def run_folder_materialization(
     # Perform materialization
     materialization_rows = []
     mat_iter = (
-        tqdm(materialization_plan_df.iterrows(), total=len(materialization_plan_df), desc="Materializing organized files")
+        tqdm(
+            materialization_plan_df.iterrows(), total=len(materialization_plan_df), desc="Materializing organized files"
+        )
         if show_progress
         else materialization_plan_df.iterrows()
     )
@@ -126,18 +126,20 @@ def run_folder_materialization(
             on_existing=on_existing,
             allow_hardlink_fallback_to_copy=allow_hardlink_fallback_to_copy,
         )
-        materialization_rows.append({
-            "embedding_row": row["embedding_row"],
-            "source_path": src.as_posix(),
-            "destination_path": dest.as_posix(),
-            "proposed_folder": row["proposed_folder"],
-            "cluster_label": row.get("cluster_label"),
-            "status": res["status"],
-            "operation_used": res["operation_used"],
-            "error_type": res["error_type"],
-            "error_message": res["error_message"],
-            "processed_at": now_iso(),
-        })
+        materialization_rows.append(
+            {
+                "embedding_row": row["embedding_row"],
+                "source_path": src.as_posix(),
+                "destination_path": dest.as_posix(),
+                "proposed_folder": row["proposed_folder"],
+                "cluster_label": row.get("cluster_label"),
+                "status": res["status"],
+                "operation_used": res["operation_used"],
+                "error_type": res["error_type"],
+                "error_message": res["error_message"],
+                "processed_at": now_iso(),
+            }
+        )
 
     materialization_result_df = pd.DataFrame(materialization_rows)
     result_path = tables_dir / "materialization_result.csv"
@@ -173,7 +175,9 @@ def run_folder_materialization(
 
         # Contact sheet per folder
         dest_paths = [Path(p) for p in folder_rows["destination_path"].head(24) if Path(p).exists()]
-        create_contact_sheet(dest_paths, folder_dir / "_contact_sheet.jpg", title=f"{folder_name} | n={len(folder_rows)}")
+        create_contact_sheet(
+            dest_paths, folder_dir / "_contact_sheet.jpg", title=f"{folder_name} | n={len(folder_rows)}"
+        )
 
     # Copy clustering contact sheets if requested
     if copy_cluster_contact_sheets_to_output:
@@ -217,9 +221,7 @@ def run_folder_materialization(
     folder_counts_df.to_csv(tables_dir / "final_folder_counts.csv", index=False)
 
     operation_counts_df = (
-        materialization_result_df.groupby(["status", "operation_used"])
-        .size()
-        .reset_index(name="count")
+        materialization_result_df.groupby(["status", "operation_used"]).size().reset_index(name="count")
     )
     operation_counts_df.to_csv(tables_dir / "operation_counts.csv", index=False)
 

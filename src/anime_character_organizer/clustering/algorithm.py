@@ -4,6 +4,7 @@ HDBSCAN clustering execution supporting both `hdbscan` and `sklearn.cluster.HDBS
 
 import os
 from typing import Tuple
+
 import numpy as np
 
 from ..exceptions import ClusteringError
@@ -19,7 +20,7 @@ def fit_hdbscan(
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, str]:
     """
     Run HDBSCAN clustering over normalized embeddings.
-    
+
     Returns:
         (labels, probabilities, outlier_scores, backend_used)
     """

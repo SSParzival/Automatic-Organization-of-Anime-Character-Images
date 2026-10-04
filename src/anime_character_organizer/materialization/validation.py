@@ -4,6 +4,7 @@ Validation of materialized output directory files against source files.
 
 from pathlib import Path
 from typing import Any, Dict, List
+
 import pandas as pd
 
 
@@ -32,16 +33,18 @@ def validate_materialized_files(materialization_result_df: pd.DataFrame) -> pd.D
 
         is_valid = bool(status in ("ok", "skipped_existing") and dest_exists and dest_is_file and size_matches)
 
-        validation_rows.append({
-            "embedding_row": row.get("embedding_row"),
-            "source_path": source_path.as_posix(),
-            "destination_path": dest_path.as_posix(),
-            "status": status,
-            "dest_exists": dest_exists,
-            "dest_is_file": dest_is_file,
-            "size_matches": size_matches,
-            "is_valid": is_valid,
-            "validation_error": error_msg,
-        })
+        validation_rows.append(
+            {
+                "embedding_row": row.get("embedding_row"),
+                "source_path": source_path.as_posix(),
+                "destination_path": dest_path.as_posix(),
+                "status": status,
+                "dest_exists": dest_exists,
+                "dest_is_file": dest_is_file,
+                "size_matches": size_matches,
+                "is_valid": is_valid,
+                "validation_error": error_msg,
+            }
+        )
 
     return pd.DataFrame(validation_rows)

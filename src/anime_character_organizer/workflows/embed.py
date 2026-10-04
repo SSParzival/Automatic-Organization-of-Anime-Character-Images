@@ -2,19 +2,20 @@
 Workflow orchestrator for Stage 3: CCIP embedding extraction and L2 normalization.
 """
 
-from datetime import datetime
 import json
-from pathlib import Path
 import platform
 import sys
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, Optional, Union
+
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
 from ..embeddings.extraction import extract_all_embeddings, warmup_ccip_model
 from ..embeddings.normalization import l2_normalize_matrix
-from ..exceptions import ConfigurationError, EmbeddingError, InvalidImageError, RunNotFoundError
+from ..exceptions import ConfigurationError, EmbeddingError, InvalidImageError
 from ..utils.paths import normalize_path_string
 from ..utils.runs import find_latest_run
 from ..utils.serialization import safe_bool_series
@@ -92,20 +93,28 @@ def run_embedding_extraction(
 
     # Validate crop files before inference
     validation_rows = []
-    val_iter = tqdm(embedding_input_df.iterrows(), total=len(embedding_input_df), desc="Validating crop files") if show_progress else embedding_input_df.iterrows()
+    val_iter = (
+        tqdm(embedding_input_df.iterrows(), total=len(embedding_input_df), desc="Validating crop files")
+        if show_progress
+        else embedding_input_df.iterrows()
+    )
     for _, row in val_iter:
         is_valid, error_type, error_msg = validate_image_file(row["crop_path"])
-        validation_rows.append({
-            "embedding_index": int(row["embedding_index"]),
-            "crop_path": row["crop_path"],
-            "valid_for_embedding": bool(is_valid),
-            "validation_error_type": error_type,
-            "validation_error_message": error_msg,
-        })
+        validation_rows.append(
+            {
+                "embedding_index": int(row["embedding_index"]),
+                "crop_path": row["crop_path"],
+                "valid_for_embedding": bool(is_valid),
+                "validation_error_type": error_type,
+                "validation_error_message": error_msg,
+            }
+        )
 
     crop_validation_df = pd.DataFrame(validation_rows)
     embedding_ready_df = embedding_input_df.merge(crop_validation_df, on=["embedding_index", "crop_path"], how="left")
-    embedding_ready_df = embedding_ready_df[embedding_ready_df["valid_for_embedding"].astype(bool)].copy().reset_index(drop=True)
+    embedding_ready_df = (
+        embedding_ready_df[embedding_ready_df["valid_for_embedding"].astype(bool)].copy().reset_index(drop=True)
+    )
     embedding_ready_df["embedding_index"] = np.arange(len(embedding_ready_df), dtype=int)
     invalid_crop_val_df = crop_validation_df[~crop_validation_df["valid_for_embedding"].astype(bool)].copy()
 
@@ -133,15 +142,17 @@ def run_embedding_extraction(
         show_progress=show_progress,
     )
 
-    feature_status_df = pd.DataFrame([
-        {
-            "crop_path": rec["path"],
-            "embedding_status": rec["status"],
-            "embedding_error_type": rec["error_type"],
-            "embedding_error_message": rec["error_message"],
-        }
-        for rec in feature_records
-    ])
+    feature_status_df = pd.DataFrame(
+        [
+            {
+                "crop_path": rec["path"],
+                "embedding_status": rec["status"],
+                "embedding_error_type": rec["error_type"],
+                "embedding_error_message": rec["error_message"],
+            }
+            for rec in feature_records
+        ]
+    )
 
     ok_records = [r for r in feature_records if r["status"] == "ok"]
     if not ok_records:
@@ -155,10 +166,12 @@ def run_embedding_extraction(
     else:
         normalized_embeddings = raw_embeddings.copy()
 
-    successful_embedding_df = pd.DataFrame({
-        "embedding_row": np.arange(len(ok_paths), dtype=int),
-        "crop_path": ok_paths,
-    })
+    successful_embedding_df = pd.DataFrame(
+        {
+            "embedding_row": np.arange(len(ok_paths), dtype=int),
+            "crop_path": ok_paths,
+        }
+    )
 
     feature_status_clean = feature_status_df.drop_duplicates(subset=["crop_path"], keep="first").reset_index(drop=True)
     embedding_manifest_df = embedding_ready_df.merge(feature_status_clean, on="crop_path", how="left")

@@ -3,8 +3,8 @@ Filesystem materialization operations: hard links, symbolic links, and file copi
 """
 
 import os
-from pathlib import Path
 import shutil
+from pathlib import Path
 from typing import Any, Dict, Union
 
 
@@ -26,12 +26,12 @@ def materialize_one_file(
 ) -> Dict[str, Any]:
     """
     Materialize a single file at destination using the specified mode.
-    
+
     Modes:
         'hardlink': Creates a hard link pointing to the same inode.
         'copy': Copies file bytes and preserves timestamps (shutil.copy2).
         'symlink': Creates a relative or absolute symbolic link.
-        
+
     on_existing:
         'error': Raises FileExistsError if destination exists.
         'skip': Skips file if destination exists.

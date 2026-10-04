@@ -4,6 +4,7 @@ Destination planning and collision prevention for folder materialization.
 
 from pathlib import Path
 from typing import Any, Dict, List, Set, Union
+
 import pandas as pd
 
 from ..utils.hashing import stable_short_hash
@@ -67,14 +68,16 @@ def build_materialization_plan(
         dest_path = output_dir / folder_name / dest_filename
         unique_dest_path = ensure_unique_destination_path(dest_path, used_paths)
 
-        plan_rows.append({
-            "embedding_row": row.get("embedding_row"),
-            "cluster_label": row.get("cluster_label"),
-            "proposed_folder": folder_name,
-            "source_path": source_path.as_posix(),
-            "destination_path": unique_dest_path.as_posix(),
-            "destination_filename": unique_dest_path.name,
-        })
+        plan_rows.append(
+            {
+                "embedding_row": row.get("embedding_row"),
+                "cluster_label": row.get("cluster_label"),
+                "proposed_folder": folder_name,
+                "source_path": source_path.as_posix(),
+                "destination_path": unique_dest_path.as_posix(),
+                "destination_filename": unique_dest_path.name,
+            }
+        )
 
     result_df = assignment_df.copy().reset_index(drop=True)
     result_df["destination_path"] = [r["destination_path"] for r in plan_rows]

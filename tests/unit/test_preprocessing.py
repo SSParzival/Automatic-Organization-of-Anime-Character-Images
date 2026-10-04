@@ -2,9 +2,10 @@
 Unit tests for preprocessing, geometry, detection selection, and cropping.
 """
 
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
+
 import pandas as pd
 from PIL import Image
 
@@ -12,7 +13,6 @@ from anime_character_organizer.preprocessing.cropping import (
     add_review_flags,
     make_crop_id,
     process_image_for_crop,
-    save_rgb_image,
 )
 from anime_character_organizer.preprocessing.detection import (
     choose_best_detection,
@@ -81,28 +81,30 @@ class TestPreprocessing(unittest.TestCase):
             self.assertTrue(Path(rec["crop_path"]).exists())
 
     def test_review_flags(self):
-        df = pd.DataFrame([
-            {
-                "status": "ok",
-                "selected_region_type": "head",
-                "is_multi_head": False,
-            },
-            {
-                "status": "ok",
-                "selected_region_type": "full_image",
-                "is_multi_head": False,
-            },
-            {
-                "status": "ok",
-                "selected_region_type": "head",
-                "is_multi_head": True,
-            },
-            {
-                "status": "error",
-                "selected_region_type": None,
-                "is_multi_head": False,
-            },
-        ])
+        df = pd.DataFrame(
+            [
+                {
+                    "status": "ok",
+                    "selected_region_type": "head",
+                    "is_multi_head": False,
+                },
+                {
+                    "status": "ok",
+                    "selected_region_type": "full_image",
+                    "is_multi_head": False,
+                },
+                {
+                    "status": "ok",
+                    "selected_region_type": "head",
+                    "is_multi_head": True,
+                },
+                {
+                    "status": "error",
+                    "selected_region_type": None,
+                    "is_multi_head": False,
+                },
+            ]
+        )
 
         rev_df = add_review_flags(df)
         self.assertFalse(rev_df.iloc[0]["needs_review"])

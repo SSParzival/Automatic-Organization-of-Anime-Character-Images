@@ -3,13 +3,14 @@ Cluster centroid calculation and Euclidean distance metrics.
 """
 
 from typing import Dict
+
 import numpy as np
 
 
 def compute_cluster_centroids(embeddings: np.ndarray, labels: np.ndarray) -> Dict[int, np.ndarray]:
     """
     Compute L2-normalized centroids for each non-noise cluster label (label != -1).
-    
+
     Returns:
         Dictionary mapping cluster_label (int) -> normalized centroid vector (np.ndarray float32).
     """

@@ -4,8 +4,8 @@ CLI script to run Stage 2: Anime Head/Person Detection and Crop Preparation.
 """
 
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from anime_character_organizer.workflows.crop import run_crop_preparation
 

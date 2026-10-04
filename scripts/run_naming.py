@@ -4,8 +4,8 @@ CLI script to run Stage 6: Semantic Cluster Naming with Anime Image Taggers.
 """
 
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from anime_character_organizer.workflows.naming import run_cluster_naming
 

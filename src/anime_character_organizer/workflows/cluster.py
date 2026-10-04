@@ -2,15 +2,15 @@
 Workflow orchestrator for Stage 4: HDBSCAN clustering and review diagnostics.
 """
 
-from datetime import datetime
 import json
-from pathlib import Path
 import platform
 import sys
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, Optional, Union
+
 import numpy as np
 import pandas as pd
-from tqdm.auto import tqdm
 
 from ..clustering.algorithm import fit_hdbscan
 from ..clustering.centroids import compute_cluster_centroids, euclidean_distance_to_centroid
@@ -20,7 +20,7 @@ from ..clustering.diagnostics import (
     flag_cluster_review_items,
     sample_representative_and_boundary_rows,
 )
-from ..exceptions import ConfigurationError, RunNotFoundError
+from ..exceptions import ConfigurationError
 from ..utils.runs import find_latest_run
 from ..utils.time import now_iso
 from ..visualization.contact_sheet import create_contact_sheet
@@ -157,9 +157,7 @@ def run_clustering(
                 centroids = compute_cluster_centroids(embeddings, labels)
                 for label, centroid in centroids.items():
                     idx = np.where(labels == label)[0]
-                    final_distances = euclidean_distance_to_centroid(
-                        embeddings[idx], centroid
-                    ).astype(np.float32)
+                    final_distances = euclidean_distance_to_centroid(embeddings[idx], centroid).astype(np.float32)
                     distance_to_centroid[idx] = final_distances
                     cluster_manifest_df.loc[idx, "distance_to_centroid"] = final_distances
 
@@ -231,9 +229,11 @@ def run_clustering(
 
     # Cluster contact sheets
     contact_sheet_rows = []
-    eligible_clusters = cluster_summary_df[
-        (~cluster_summary_df["is_noise_cluster"]) & (cluster_summary_df["image_count"] >= 2)
-    ].sort_values(["image_count", "mean_probability"], ascending=[False, False]).head(250)
+    eligible_clusters = (
+        cluster_summary_df[(~cluster_summary_df["is_noise_cluster"]) & (cluster_summary_df["image_count"] >= 2)]
+        .sort_values(["image_count", "mean_probability"], ascending=[False, False])
+        .head(250)
+    )
 
     for _, crow in eligible_clusters.iterrows():
         lbl = int(crow["cluster_label"])
@@ -247,14 +247,16 @@ def run_clustering(
             out_sheet,
             title=f"{stub} | n={len(c_items)} | mean_p={crow['mean_probability']:.3f}",
         )
-        contact_sheet_rows.append({
-            "cluster_label": lbl,
-            "cluster_folder_stub": stub,
-            "image_count": len(c_items),
-            "sampled_image_count": len(cpaths),
-            "created": bool(created),
-            "contact_sheet_path": out_sheet.as_posix() if created else None,
-        })
+        contact_sheet_rows.append(
+            {
+                "cluster_label": lbl,
+                "cluster_folder_stub": stub,
+                "image_count": len(c_items),
+                "sampled_image_count": len(cpaths),
+                "created": bool(created),
+                "contact_sheet_path": out_sheet.as_posix() if created else None,
+            }
+        )
 
     contact_sheets_df = pd.DataFrame(contact_sheet_rows)
     contact_sheets_path = tables_dir / "cluster_contact_sheets.csv"
@@ -263,25 +265,33 @@ def run_clustering(
     # Special contact sheets (noise, low prob, high outlier, manual review)
     special_groups = {
         "noise_samples": cluster_manifest_df[cluster_manifest_df["is_noise"]],
-        "low_probability_samples": cluster_manifest_df[(~cluster_manifest_df["is_noise"]) & cluster_manifest_df["is_low_probability"]],
-        "high_outlier_samples": cluster_manifest_df[(~cluster_manifest_df["is_noise"]) & cluster_manifest_df["is_high_outlier"]],
+        "low_probability_samples": cluster_manifest_df[
+            (~cluster_manifest_df["is_noise"]) & cluster_manifest_df["is_low_probability"]
+        ],
+        "high_outlier_samples": cluster_manifest_df[
+            (~cluster_manifest_df["is_noise"]) & cluster_manifest_df["is_high_outlier"]
+        ],
         "manual_review_samples": cluster_manifest_df[cluster_manifest_df["requires_manual_review"]],
     }
     special_sheet_rows = []
     for sname, sgroup in special_groups.items():
         if sgroup.empty:
-            special_sheet_rows.append({"sheet_name": sname, "image_count": 0, "created": False, "contact_sheet_path": None})
+            special_sheet_rows.append(
+                {"sheet_name": sname, "image_count": 0, "created": False, "contact_sheet_path": None}
+            )
             continue
         sample_paths = sgroup.head(24)["crop_path"].dropna().tolist()
         out_sheet = contact_sheets_dir / f"_{sname}.jpg"
         created = create_contact_sheet(sample_paths, out_sheet, title=f"{sname} | n={len(sgroup)}")
-        special_sheet_rows.append({
-            "sheet_name": sname,
-            "image_count": len(sgroup),
-            "sampled_image_count": len(sample_paths),
-            "created": bool(created),
-            "contact_sheet_path": out_sheet.as_posix() if created else None,
-        })
+        special_sheet_rows.append(
+            {
+                "sheet_name": sname,
+                "image_count": len(sgroup),
+                "sampled_image_count": len(sample_paths),
+                "created": bool(created),
+                "contact_sheet_path": out_sheet.as_posix() if created else None,
+            }
+        )
 
     special_sheets_df = pd.DataFrame(special_sheet_rows)
     special_sheets_path = tables_dir / "special_contact_sheets.csv"
@@ -311,11 +321,21 @@ def run_clustering(
                 "cluster_selection_method": cluster_selection_method,
             },
             "created_at": now_iso(),
-            "sample_items": c_items[[
-                "embedding_row", "relative_path", "source_path", "crop_path",
-                "cluster_probability", "outlier_score", "distance_to_centroid",
-                "requires_manual_review", "cluster_review_reason",
-            ]].head(25).to_dict(orient="records"),
+            "sample_items": c_items[
+                [
+                    "embedding_row",
+                    "relative_path",
+                    "source_path",
+                    "crop_path",
+                    "cluster_probability",
+                    "outlier_score",
+                    "distance_to_centroid",
+                    "requires_manual_review",
+                    "cluster_review_reason",
+                ]
+            ]
+            .head(25)
+            .to_dict(orient="records"),
         }
         meta_p = cluster_metadata_dir / f"{stub}.json"
         with meta_p.open("w", encoding="utf-8") as f:
