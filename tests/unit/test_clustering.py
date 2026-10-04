@@ -101,6 +101,44 @@ class TestClustering(unittest.TestCase):
         self.assertEqual(summary_df.iloc[0]["image_count"], 3)
         self.assertEqual(summary_df.iloc[0]["head_crop_count"], 2)
 
+    def test_fit_hdbscan_with_epsilon(self):
+        # Small clusters of 2 points each
+        c1 = np.array([[1.0, 0.0], [0.99, 0.05]], dtype=np.float32)
+        c2 = np.array([[-1.0, 0.0], [-0.99, -0.05]], dtype=np.float32)
+        X = np.vstack([c1, c2])
+        labels, probs, outliers, _ = fit_hdbscan(
+            X,
+            min_cluster_size=2,
+            min_samples=1,
+            cluster_selection_epsilon=0.50,
+        )
+        self.assertEqual(len(labels), 4)
+        # Should identify 2 clusters without noise
+        self.assertEqual(len(set(labels) - {-1}), 2)
+
+    def test_separate_review_folders_toggle(self):
+        df = pd.DataFrame({
+            "embedding_row": [0, 1],
+            "cluster_label": [0, 0],
+            "cluster_folder_stub": ["cluster_00000_unknown", "cluster_00000_unknown"],
+            "cluster_probability": [0.9, 0.2],
+            "outlier_score": [0.1, 0.9],
+            "needs_review": [False, True],
+            "distance_to_centroid": [0.1, 0.4],
+            "is_noise": [False, False],
+            "requires_manual_review": [False, True],
+        })
+
+        # By default (separate_review_folders=False), both stay in unified cluster folder
+        unified = build_folder_assignment_manifest(df, separate_review_folders=False)
+        self.assertEqual(unified.iloc[0]["proposed_folder"], "cluster_00000_unknown")
+        self.assertEqual(unified.iloc[1]["proposed_folder"], "cluster_00000_unknown")
+
+        # When separate_review_folders=True, review items get _review suffix
+        split = build_folder_assignment_manifest(df, separate_review_folders=True)
+        self.assertEqual(split.iloc[0]["proposed_folder"], "cluster_00000_unknown")
+        self.assertEqual(split.iloc[1]["proposed_folder"], "cluster_00000_unknown_review")
+
 
 if __name__ == "__main__":
     unittest.main()

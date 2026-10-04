@@ -77,6 +77,7 @@ The repository is structured as a modular Python package (`anime_character_organ
 │   └── run_pipeline.py              # End-to-end master pipeline runner
 │
 ├── notebooks/                       # Interactive demonstration & orchestration notebooks
+│   ├── pipeline_master.ipynb        # Unified end-to-end master notebook with config cell
 │   ├── 01_dataset_audit.ipynb
 │   ├── 02_crop_preparation.ipynb
 │   ├── 03_ccip_embedding_extraction.ipynb
@@ -154,7 +155,22 @@ python -m unittest discover tests
 pytest tests
 ```
 
-## Notebook 01: Dataset Audit, Validation, and Duplicate Index
+## Master Pipeline Notebook (`notebooks/pipeline_master.ipynb`)
+
+For a unified interactive experience, [`notebooks/pipeline_master.ipynb`](notebooks/pipeline_master.ipynb) merges all six stages into a single end-to-end execution interface.
+
+### Key Features:
+- **Centralized Parameter Cell**: The very first code cell configures all pipeline parameters in one place (paths, thresholds, model names, cluster parameters).
+- **Optimized Clustering Defaults**:
+  - `min_cluster_size = 2` (allows pairs and triplets of characters to form valid clusters instead of being discarded as noise).
+  - `min_samples = 1` (removes the severe reachability distance penalty that previously treated sparse character groups as noise).
+  - `cluster_selection_epsilon = 0.50` (merges points within visual character similarity threshold).
+  - `reassign_noise = True` with `max_reassign_distance = 0.55` (softly reassigns borderline noise images to their closest cluster centroid).
+  - `separate_review_folders = False` (keeps character folders unified rather than fragmenting images across multiple `_review` directories).
+  - `use_perceptual_representatives = False` (prevents similar character poses from being discarded before clustering).
+- **Rich Step-by-Step Visualization**: Interactive progress, cluster summary metrics, contact sheet previews, and distribution plots displayed inline.
+
+## Stage-by-Stage Modular Notebooks
 
 The first notebook scans the input image directory recursively and builds a complete metadata index of the collection.
 

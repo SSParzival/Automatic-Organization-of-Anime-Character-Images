@@ -16,6 +16,12 @@ from .naming import run_cluster_naming
 def run_full_pipeline(
     input_dir: Union[str, Path],
     project_dir: Union[str, Path] = "./anime_character_pipeline",
+    min_cluster_size: int = 2,
+    min_samples: int = 1,
+    cluster_selection_epsilon: float = 0.50,
+    reassign_noise: bool = True,
+    max_reassign_distance: float = 0.55,
+    separate_review_folders: bool = False,
     run_tagging: bool = False,
     materialization_mode: str = "hardlink",
     show_progress: bool = True,
@@ -26,6 +32,12 @@ def run_full_pipeline(
     Args:
         input_dir: Source folder with images to organize.
         project_dir: Base directory for run artifacts and organized output.
+        min_cluster_size: Minimum cluster size for HDBSCAN (default: 2).
+        min_samples: Minimum samples for HDBSCAN reachability (default: 1).
+        cluster_selection_epsilon: Distance threshold for cluster merging (default: 0.50).
+        reassign_noise: Whether to reassign borderline noise to nearest centroid (default: True).
+        max_reassign_distance: Max Euclidean distance for noise reassignment (default: 0.55).
+        separate_review_folders: Whether to split review items into separate folders (default: False).
         run_tagging: If True, executes stage 06 semantic naming after materialization.
         materialization_mode: 'hardlink', 'copy', or 'symlink'.
         show_progress: Whether to display tqdm progress bars.
@@ -63,6 +75,12 @@ def run_full_pipeline(
     results["cluster"] = run_clustering(
         project_dir=project_dir,
         previous_run_dir=results["embed"]["run_dir"],
+        min_cluster_size=min_cluster_size,
+        min_samples=min_samples,
+        cluster_selection_epsilon=cluster_selection_epsilon,
+        reassign_noise=reassign_noise,
+        max_reassign_distance=max_reassign_distance,
+        separate_review_folders=separate_review_folders,
         show_progress=show_progress,
     )
 

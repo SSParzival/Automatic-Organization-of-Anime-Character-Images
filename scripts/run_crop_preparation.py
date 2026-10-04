@@ -28,9 +28,9 @@ def main():
         help="Path to previous 01_dataset_audit_* run directory (default: latest).",
     )
     parser.add_argument(
-        "--no-perceptual-filter",
+        "--filter-perceptual-duplicates",
         action="store_true",
-        help="Do not exclude perceptual duplicate non-representatives.",
+        help="Exclude perceptual duplicate non-representatives (default: False, to avoid dropping images before clustering).",
     )
     parser.add_argument(
         "--crop-size",
@@ -51,7 +51,7 @@ def main():
         res = run_crop_preparation(
             project_dir=args.project_dir,
             previous_run_dir=args.previous_run_dir,
-            use_perceptual_representatives=not args.no_perceptual_filter,
+            use_perceptual_representatives=args.filter_perceptual_duplicates,
             crop_output_size=(args.crop_size, args.crop_size),
             crop_format=args.crop_format,
         )

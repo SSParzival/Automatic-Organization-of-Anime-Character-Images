@@ -136,12 +136,22 @@ def sample_representative_and_boundary_rows(
     return sampled.sort_values("distance_to_centroid", ascending=True)
 
 
-def build_folder_assignment_manifest(cluster_manifest_df: pd.DataFrame) -> pd.DataFrame:
+def build_folder_assignment_manifest(
+    cluster_manifest_df: pd.DataFrame,
+    separate_review_folders: bool = False,
+) -> pd.DataFrame:
     """
-    Build conservative folder assignment plan based on cluster label and review flags.
-    Clean items -> cluster_XXXXX_unknown
-    Noise items -> _needs_review_noise
-    Uncertain items -> cluster_XXXXX_unknown_review
+    Build folder assignment plan based on cluster label and review flags.
+    
+    If separate_review_folders is False (recommended):
+        Non-noise items go to their character cluster folder (e.g. cluster_XXXXX_unknown)
+        with review flags recorded in manifests and metadata for non-destructive inspection.
+        Only unassigned noise items go to _needs_review_noise.
+        
+    If separate_review_folders is True:
+        Clean items -> cluster_XXXXX_unknown
+        Noise items -> _needs_review_noise
+        Uncertain items -> cluster_XXXXX_unknown_review
     """
     df = cluster_manifest_df.copy()
     df["assignment_category"] = "cluster"
@@ -159,13 +169,14 @@ def build_folder_assignment_manifest(cluster_manifest_df: pd.DataFrame) -> pd.Da
         "proposed_folder",
     ] = "_needs_review_noise"
 
-    df.loc[
-        df["assignment_category"].eq("needs_review_cluster_member"),
-        "proposed_folder",
-    ] = df.loc[
-        df["assignment_category"].eq("needs_review_cluster_member"),
-        "cluster_folder_stub",
-    ] + "_review"
+    if separate_review_folders:
+        df.loc[
+            df["assignment_category"].eq("needs_review_cluster_member"),
+            "proposed_folder",
+        ] = df.loc[
+            df["assignment_category"].eq("needs_review_cluster_member"),
+            "cluster_folder_stub",
+        ] + "_review"
 
     df["proposed_folder"] = df["proposed_folder"].map(
         lambda value: sanitize_folder_name(value, "_needs_review")

@@ -27,17 +27,17 @@ class CropConfig:
     """Configuration parameters for crop preparation stage."""
     project_dir: Path = Path("./anime_character_pipeline")
     previous_run_dir: Optional[Path] = None
-    use_perceptual_representatives: bool = True
-    head_conf_threshold: float = 0.40
+    use_perceptual_representatives: bool = False  # False avoids prematurely dropping images before clustering
+    head_conf_threshold: float = 0.35
     head_iou_threshold: float = 0.50
-    person_conf_threshold: float = 0.35
+    person_conf_threshold: float = 0.30
     person_iou_threshold: float = 0.50
-    head_padding_ratio: float = 0.20
+    head_padding_ratio: float = 0.25  # More context around hair and head accessories
     person_padding_ratio: float = 0.10
     crop_format: str = "JPEG"
     crop_quality: int = 95
     crop_output_size: Tuple[int, int] = (512, 512)
-    min_crop_box_area_ratio: float = 0.015
+    min_crop_box_area_ratio: float = 0.010
     max_workers: Optional[int] = None
 
 
@@ -61,12 +61,16 @@ class ClusteringConfig:
     previous_run_dir: Optional[Path] = None
     embedding_file_name: str = "ccip_embeddings_l2.npy"
     manifest_file_name: str = "successful_embedding_manifest.csv"
-    min_cluster_size: int = 5
-    min_samples: int = 4
+    min_cluster_size: int = 2  # Allows pairs and triplets of characters to form clusters
+    min_samples: int = 1       # Reduces reachability penalty in sparse/small clusters
+    cluster_selection_epsilon: float = 0.50  # Merges points within close visual distance
     cluster_selection_method: str = "eom"
     metric: str = "euclidean"
     low_probability_threshold: float = 0.35
     high_outlier_quantile: float = 0.95
+    reassign_noise: bool = True  # Reassigns borderline noise points to closest cluster centroid
+    max_reassign_distance: float = 0.55  # Max Euclidean distance to centroid for noise reassignment
+    separate_review_folders: bool = False  # Keep character folders unified instead of splitting
     random_seed: int = 42
 
 
@@ -99,10 +103,10 @@ class TaggingConfig:
     use_wd14_fallback: bool = True
     min_cluster_size_to_name: int = 2
     max_images_per_cluster_to_tag: int = 12
-    min_character_score: float = 0.70
-    min_name_share: float = 0.35
-    min_weighted_score: float = 0.55
-    min_top_margin: float = 0.08
+    min_character_score: float = 0.65
+    min_name_share: float = 0.30
+    min_weighted_score: float = 0.50
+    min_top_margin: float = 0.05
     ignore_review_folders_for_naming: bool = False
     tag_only_non_noise_clusters: bool = True
     create_rename_plan: bool = True

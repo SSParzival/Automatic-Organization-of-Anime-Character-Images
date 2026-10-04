@@ -11,8 +11,9 @@ from ..exceptions import ClusteringError
 
 def fit_hdbscan(
     embeddings: np.ndarray,
-    min_cluster_size: int = 5,
-    min_samples: int = 4,
+    min_cluster_size: int = 2,
+    min_samples: int = 1,
+    cluster_selection_epsilon: float = 0.50,
     metric: str = "euclidean",
     cluster_selection_method: str = "eom",
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, str]:
@@ -34,6 +35,7 @@ def fit_hdbscan(
         clusterer = hdbscan.HDBSCAN(
             min_cluster_size=min_cluster_size,
             min_samples=min_samples,
+            cluster_selection_epsilon=cluster_selection_epsilon,
             metric=metric,
             cluster_selection_method=cluster_selection_method,
             prediction_data=False,
@@ -60,6 +62,7 @@ def fit_hdbscan(
         clusterer = HDBSCAN(
             min_cluster_size=min_cluster_size,
             min_samples=min_samples,
+            cluster_selection_epsilon=cluster_selection_epsilon,
             metric=metric,
             cluster_selection_method=cluster_selection_method,
         )

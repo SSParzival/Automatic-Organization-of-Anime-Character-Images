@@ -32,12 +32,16 @@ def run_clustering(
     previous_run_dir: Optional[Union[str, Path]] = None,
     embedding_file_name: str = "ccip_embeddings_l2.npy",
     manifest_file_name: str = "successful_embedding_manifest.csv",
-    min_cluster_size: int = 5,
-    min_samples: int = 4,
+    min_cluster_size: int = 2,
+    min_samples: int = 1,
+    cluster_selection_epsilon: float = 0.50,
     cluster_selection_method: str = "eom",
     metric: str = "euclidean",
     low_probability_threshold: float = 0.35,
     high_outlier_quantile: float = 0.95,
+    reassign_noise: bool = True,
+    max_reassign_distance: float = 0.55,
+    separate_review_folders: bool = False,
     random_seed: int = 42,
     show_progress: bool = True,
 ) -> Dict[str, Any]:
@@ -96,6 +100,7 @@ def run_clustering(
         embeddings=embeddings,
         min_cluster_size=min_cluster_size,
         min_samples=min_samples,
+        cluster_selection_epsilon=cluster_selection_epsilon,
         metric=metric,
         cluster_selection_method=cluster_selection_method,
     )
@@ -119,8 +124,43 @@ def run_clustering(
 
     cluster_manifest_df["distance_to_centroid"] = distance_to_centroid
 
+    # Centroid-based soft reassignment for noise points within distance threshold
+    reassigned_count = 0
+    if reassign_noise and len(centroids) > 0:
+        noise_idx = np.where(labels == -1)[0]
+        if len(noise_idx) > 0:
+            c_labels = np.array(list(centroids.keys()))
+            c_matrix = np.stack([centroids[lbl] for lbl in c_labels])
+            for n_i in noise_idx:
+                emb = embeddings[n_i].reshape(1, -1)
+                dists = np.linalg.norm(c_matrix - emb, axis=1)
+                best_idx = int(np.argmin(dists))
+                best_dist = float(dists[best_idx])
+                if best_dist <= max_reassign_distance:
+                    assigned_lbl = int(c_labels[best_idx])
+                    labels[n_i] = assigned_lbl
+                    prob_val = max(0.5, float(1.0 - best_dist))
+                    probabilities[n_i] = prob_val
+                    outlier_scores[n_i] = best_dist
+                    distance_to_centroid[n_i] = best_dist
+                    cluster_manifest_df.loc[n_i, "cluster_label"] = assigned_lbl
+                    cluster_manifest_df.loc[n_i, "cluster_probability"] = prob_val
+                    cluster_manifest_df.loc[n_i, "outlier_score"] = best_dist
+                    cluster_manifest_df.loc[n_i, "distance_to_centroid"] = best_dist
+                    cluster_manifest_df.loc[n_i, "is_noise"] = False
+                    cluster_manifest_df.loc[n_i, "cluster_review_reason"] = "reassigned_from_noise"
+                    cluster_manifest_df.loc[n_i, "requires_manual_review"] = True
+                    cluster_manifest_df.loc[n_i, "cluster_folder_stub"] = f"cluster_{assigned_lbl:05d}_unknown"
+                    reassigned_count += 1
+
+            if reassigned_count > 0:
+                centroids = compute_cluster_centroids(embeddings, labels)
+
     cluster_summary_df = calculate_cluster_summary(cluster_manifest_df)
-    folder_assignment_df = build_folder_assignment_manifest(cluster_manifest_df)
+    folder_assignment_df = build_folder_assignment_manifest(
+        cluster_manifest_df,
+        separate_review_folders=separate_review_folders,
+    )
 
     # Save arrays and tables
     labels_path = arrays_dir / "cluster_labels.npy"
@@ -312,7 +352,11 @@ def run_clustering(
         "metric": metric,
         "min_cluster_size": int(min_cluster_size),
         "min_samples": int(min_samples),
+        "cluster_selection_epsilon": float(cluster_selection_epsilon),
         "cluster_selection_method": cluster_selection_method,
+        "reassign_noise": bool(reassign_noise),
+        "max_reassign_distance": float(max_reassign_distance),
+        "reassigned_points": int(reassigned_count),
         "embedding_count": int(embeddings.shape[0]),
         "embedding_dim": int(embeddings.shape[1]),
         "estimated_clusters": int(cluster_count),
