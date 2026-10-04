@@ -226,6 +226,7 @@ def run_embedding_extraction(
         "run_dir": run_dir,
         "raw_embeddings": raw_embeddings,
         "normalized_embeddings": normalized_embeddings,
+        "embeddings": normalized_embeddings,
         "embedding_manifest_df": embedding_manifest_df,
         "successful_manifest_df": successful_manifest_df,
         "summary": summary,
