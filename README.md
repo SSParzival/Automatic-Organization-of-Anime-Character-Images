@@ -1,60 +1,63 @@
 # Automatic Organization of Anime Character Images
 
-> **Educational and experimental project.**  
-> This repository is provided only for educational purposes. It is not intended as a production-grade system, a commercial tool, or a definitive character-recognition solution. All files in this repository were **vibe-coded**, meaning that the code was produced through iterative AI-assisted development, experimentation, correction, and refinement. The project should therefore be read as a learning-oriented prototype rather than as a formally engineered software package.
+> **Important:**
+> This repository is designed for educational exploration, research, and practical automated sorting of unlabelled anime character collections. All code in this repository was originally developed through exploratory AI-assisted programming ("vibe-coding") and subsequently professionalized into a modular Python package, robust command-line interface, pedagogical Jupyter notebooks, and a comprehensive test suite. The system is designed to accelerate dataset preparation and exploratory analysis; outputs should always be reviewed by humans before downstream use.
 
-## Overview
+---
 
-This project explores a complete pipeline for automatically organizing a large collection of anime-style images into folders that approximately correspond to visual character identities.
+## 1. Overview and Purpose
 
-The central problem is that the full list of characters is not known beforehand. Therefore, the task is not treated as ordinary supervised classification. Instead, the project follows an unsupervised or semi-supervised strategy:
+When managing large, unlabelled collections of anime-style illustrations, illustrations frequently lack character tags or contain unreliable metadata. Supervised classification cannot be applied directly because the full character inventory is unknown upfront.
 
-1. audit and validate the image collection;
-2. remove or mark duplicates;
-3. detect and crop character-relevant regions;
-4. extract anime-character similarity embeddings;
-5. cluster images according to visual similarity;
-6. materialize a non-destructive folder structure;
-7. optionally suggest semantic names for the discovered clusters using anime taggers.
+This project implements an end-to-end unsupervised and semi-supervised computer vision workflow to group unlabelled images by visual character identity. Rather than attempting semantic recognition immediately, the pipeline enforces a fundamental architectural invariant: **visual identity clustering precedes semantic tagging**.
 
-The main idea is that grouping images by visual identity should happen before trying to name the character. This is important because a tagger may fail on rare, obscure, fan-made, original, or heavily stylized characters, while an embedding-based clustering pipeline can still group visually similar images together.
+Grouping images visually first ensures that characters with rare designs, original characters (OCs), or illustrations missing from online tag databases are safely grouped into visual clusters before optional tagging tools (such as Danbooru-trained taggers) attempt to suggest names.
 
-## Educational Purpose and Disclaimer
+---
 
-This repository is intended for learning, experimentation, and documentation of a practical computer-vision workflow. It should be used as a reference for understanding how an image-clustering pipeline can be structured in notebooks.
+## 2. Principal Functionality
 
-The repository does **not** guarantee:
+The pipeline executes through six modular, auditable stages:
 
-- perfect character recognition;
-- perfect cluster purity;
-- correct semantic character names;
-- reliable performance on all anime styles;
-- compatibility with every operating system or hardware setup;
-- production-level robustness.
+1. **Dataset Integrity Audit and Duplicate Detection**:
+   - Recursively scans candidate image files (`.jpg`, `.jpeg`, `.png`, `.webp`, `.bmp`).
+   - Verifies file integrity and dimensions using PIL.
+   - Computes SHA-256 cryptographic hashes for exact duplicate grouping.
+   - Computes perceptual hashes (pHash) and indexes them in a discrete BK-tree with Union-Find disjoint sets for near-duplicate discovery.
+2. **Crop Preparation and Identity Region Selection**:
+   - Applies deep learning detectors (`dghs-imgutils`) to locate anime heads and bodies.
+   - Employs a deterministic fallback ladder: `head crop -> person crop -> full image fallback`.
+   - Pads and squares bounding boxes with clamp protections against out-of-boundary coordinates.
+   - Flags low-confidence, extreme-aspect, or tiny crops for manual review.
+3. **CCIP Visual Identity Embedding Extraction**:
+   - Extracts character identity feature vectors using CCIP (Character Classification and Identification Pre-training with CAFormer backbones).
+   - Normalizes feature vectors using L2 row normalization, mapping Euclidean distance directly to cosine similarity.
+   - Operates in memory-safe minibatches with fallback mechanisms for damaged crops.
+4. **HDBSCAN Density-Based Clustering and Diagnostics**:
+   - Clusters normalized embeddings in metric space using HDBSCAN.
+   - Employs conservative parameters (`min_cluster_size=2`, `min_samples=1`, `cluster_selection_epsilon=0.50`) to avoid conflating distinct characters.
+   - Computes cluster centroids, distance distributions, and outlier scores.
+   - Softly reassigns borderline noise points to nearest cluster centroids within a strict distance threshold.
+5. **Non-Destructive Folder Materialization**:
+   - Generates collision-free, deterministic target paths (`{row:07d}__{stem}{ext}`).
+   - Materializes organized folders using hard links, file copies, or symbolic links.
+   - Preserves source datasets completely untouched.
+   - Verifies file existence and byte-level size matches post-materialization.
+6. **Semantic Cluster Naming with Anime Taggers (Optional)**:
+   - Samples representative images closest to each cluster's centroid.
+   - Evaluates images using anime taggers (PixAI or DeepDanbooru/WD14).
+   - Aggregates predicted character tags using weighted frequency voting and margin testing.
+   - Generates an auditable rename plan and optional secondary named folder tree.
 
-The outputs should always be manually reviewed. The system is designed to reduce manual work, not to eliminate human judgment.
+---
 
-## Vibe-Coded Nature of the Repository
+## 3. Architecture and Repository Structure
 
-All files in this repository were **vibe-coded**. In this context, this means that the project was developed through an exploratory AI-assisted workflow, where code was iteratively generated, tested, corrected, and improved.
-
-As a result:
-
-- the notebooks are intentionally verbose and explicit;
-- the code prioritizes clarity, auditability, and reproducibility;
-- many intermediate files are saved for inspection;
-- the pipeline is modular rather than compressed into a single script;
-- the project should be treated as an educational prototype.
-
-Users are encouraged to inspect the notebooks carefully before running them on large image collections.
-
-## Project Structure
-
-The repository is structured as a modular Python package (`anime_character_organizer`) with standalone CLI scripts, interactive Jupyter notebooks for inspection and experimentation, and an automated test suite.
+The project follows a hybrid architecture balancing reusable library code, headless scripts, and step-by-step pedagogical notebooks:
 
 ```text
 .
-├── src/anime_character_organizer/   # Core reusable package
+├── src/anime_character_organizer/   # Core reusable Python package
 │   ├── config.py                    # Strongly typed dataclass configurations
 │   ├── exceptions.py                # Typed domain exceptions hierarchy
 │   ├── utils/                       # Common utilities (paths, hashing, BK-tree, runs, etc.)
@@ -70,424 +73,304 @@ The repository is structured as a modular Python package (`anime_character_organ
 ├── scripts/                         # Standalone headless CLI executables
 │   ├── run_audit.py                 # Stage 1: Dataset audit & duplicate detection
 │   ├── run_crop_preparation.py      # Stage 2: Face/body detection & crop extraction
-│   ├── run_embeddings.py            # Stage 3: Embedding extraction
+│   ├── run_embeddings.py            # Stage 3: CCIP embedding extraction
 │   ├── run_clustering.py            # Stage 4: HDBSCAN clustering & diagnostics
 │   ├── run_materialization.py       # Stage 5: Non-destructive folder materialization
 │   ├── run_naming.py                # Stage 6: Character tag inference & naming
 │   └── run_pipeline.py              # End-to-end master pipeline runner
 │
-├── notebooks/                       # Interactive demonstration & orchestration notebooks
-│   ├── pipeline_master.ipynb        # Unified end-to-end master notebook with config cell
-│   ├── 01_dataset_audit.ipynb
-│   ├── 02_crop_preparation.ipynb
-│   ├── 03_ccip_embedding_extraction.ipynb
-│   ├── 04_hdbscan_clustering.ipynb
-│   ├── 05_non_destructive_folder_materialization.ipynb
-│   └── 06_cluster_naming_with_anime_tagger.ipynb
+├── notebooks/                       # Pedagogical step-by-step Jupyter notebooks
+│   ├── pipeline_master.ipynb        # Unified end-to-end master pipeline notebook
+│   ├── 01_dataset_audit.ipynb       # Stage 1 exploration and duplicate analysis
+│   ├── 02_crop_preparation.ipynb   # Stage 2 detection visualization and crop validation
+│   ├── 03_ccip_embedding_extraction.ipynb # Stage 3 embedding extraction and L2 normalization
+│   ├── 04_hdbscan_clustering.ipynb # Stage 4 density clustering, centroids, and diagnostics
+│   ├── 05_non_destructive_folder_materialization.ipynb # Stage 5 link/copy operations & verification
+│   └── 06_cluster_naming_with_anime_tagger.ipynb # Stage 6 tagger inference, voting, and naming
 │
-├── tests/                           # Unit and integration test suite
-│   ├── unit/                        # Tests for all domain modules
-│   └── integration/                 # End-to-end workflow tests
+├── tests/                           # Automated test suite
+│   ├── unit/                        # Tests for all domain modules (30+ unit tests)
+│   └── integration/                 # End-to-end multi-stage integration tests
 │
-├── pyproject.toml                   # Modern PEP 517/518 build and package definition
-└── README.md
+├── pyproject.toml                   # Build configuration, metadata, pytest, and ruff settings
+└── README.md                        # Authoritative documentation
 ```
 
-## Installation & Setup
+---
 
-### 1. Environment Setup
+## 4. Prerequisites and Environment Setup
 
-Create and activate a Python 3.10+ virtual environment:
+### Supported Python Versions
+- **Python 3.10** or **Python 3.11** (tested on 3.11.14 on Linux x86_64).
+
+### System Prerequisites
+- `git`
+- `python3` (>= 3.10)
+- `python3-venv`
+- Hardware: CPU execution is supported across all stages. For large image collections (> 500 images), an NVIDIA GPU with CUDA support is recommended for faster ONNX/PyTorch model inference.
+
+### Environment Setup
 
 ```bash
+# 1. Clone repository
+git clone https://github.com/ssparzival/Automatic-Organization-of-Anime-Character-Images.git
+cd Automatic-Organization-of-Anime-Character-Images
+
+# 2. Create and activate virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
-```
 
-### 2. Install Package
+# 3. Upgrade pip and packaging tools
+pip install --upgrade pip setuptools wheel
 
-Install `anime_character_organizer` in editable mode:
-
-```bash
+# 4. Install package in editable mode
 pip install -e .
-```
 
-To include development and testing dependencies:
-
-```bash
+# 5. Optionally install development and testing tools
 pip install -e ".[dev]"
 ```
 
-## CLI Execution (Headless Workflows)
+---
 
-Every stage of the pipeline can be executed independently from the command line without opening a Jupyter notebook:
+## 5. Configuration and Environment Variables
+
+### Configuration Dataclasses
+All pipeline stages use strongly typed dataclasses defined in `anime_character_organizer.config`:
+- `AuditConfig`: Controls candidate extensions, worker counts, and perceptual hash thresholds.
+- `CropConfig`: Controls crop dimensions, format, detection score thresholds, and padding margins.
+- `EmbeddingConfig`: Controls CCIP model selection, batch size, and L2 normalization.
+- `ClusteringConfig`: Controls HDBSCAN `min_cluster_size`, `min_samples`, `cluster_selection_epsilon`, noise reassignment thresholds, and review separation.
+- `MaterializationConfig`: Controls link modes (`hardlink`, `copy`, `symlink`), fallback behavior, and overwrite policies.
+- `TaggingConfig`: Controls primary tagger selection, confidence thresholds, and voting margins.
+
+### Environment Variables
+- `ANIME_PIPELINE_INPUT_DIR`: Overrides the default source directory (`./input_images`) in all notebooks and scripts.
+- `HF_HOME`: Sets the cache directory for Hugging Face and ONNX models downloaded by `dghs-imgutils`.
+
+---
+
+## 6. Input and Output Expectations
+
+### Inputs
+- A local directory containing anime illustrations in supported formats: `.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`.
+- Directory structure can be flat or arbitrarily nested; candidate file discovery is fully recursive.
+
+### Outputs
+All pipeline runs write timestamped, self-contained run artifacts under `anime_character_pipeline/runs/`:
+- `01_dataset_audit_<timestamp>/`: Metadata tables (`image_metadata.csv`), valid/invalid file manifests, duplicate candidate tables (`exact_duplicate_groups.csv`, `perceptual_duplicate_groups.csv`), and execution summary.
+- `02_crop_preparation_<timestamp>/`: Bounding box crops, manifest (`crop_manifest.csv`), review flag manifests, and visual contact sheets.
+- `03_ccip_embeddings_<timestamp>/`: Embedding matrices (`ccip_embeddings_raw.npy`, `ccip_embeddings_l2.npy`, bundle `.npz`), and embedding manifest.
+- `04_hdbscan_clustering_<timestamp>/`: Cluster assignments (`cluster_labels.npy`), probabilities, outlier scores, centroids, summary tables, and distribution plots.
+- `05_folder_materialization_<timestamp>/`: Materialization plan, verification report, and organized folder tree in `organized_output/anime_organized_<timestamp>/`.
+- `06_cluster_naming_<timestamp>/`: Tagger outputs, voting scores, rename plan, and optional renamed folder tree in `organized_output/anime_named_<timestamp>/`.
+
+---
+
+## 7. Command-Line Interface (CLI Scripts)
+
+Every stage can be executed directly from the terminal without opening Jupyter:
+
+### Complete End-to-End Pipeline
+```bash
+python scripts/run_pipeline.py --input-dir /path/to/images --mode hardlink
+```
+
+### Stage-by-Stage Script Invocations
 
 ```bash
-# Stage 1: Audit dataset and detect duplicates
-python scripts/run_audit.py --input-dir /path/to/images
+# Stage 1: Audit dataset and identify duplicates
+python scripts/run_audit.py --input-dir /path/to/images --phash-threshold 6
 
-# Stage 2: Prepare representative crops (auto-discovers latest audit run)
-python scripts/run_crop_preparation.py
+# Stage 2: Create character crops (auto-discovers latest audit run)
+python scripts/run_crop_preparation.py --crop-size 512 --crop-format JPEG
 
-# Stage 3: Extract CCIP character embeddings
-python scripts/run_embeddings.py
+# Stage 3: Extract CCIP visual identity embeddings
+python scripts/run_embeddings.py --batch-size 16
 
-# Stage 4: Run HDBSCAN clustering and diagnostic analysis
-python scripts/run_clustering.py --min-cluster-size 3
+# Stage 4: Run HDBSCAN density clustering
+python scripts/run_clustering.py --min-cluster-size 2 --min-samples 1 --cluster-selection-epsilon 0.50
 
-# Stage 5: Materialize non-destructive organized folders
-python scripts/run_materialization.py --link-mode hardlink
+# Stage 5: Non-destructively materialize organized folders
+python scripts/run_materialization.py --mode hardlink
 
 # Stage 6: Predict character tags and plan folder renaming
-python scripts/run_naming.py --apply-rename
-
-# Alternatively, run the complete end-to-end pipeline in one command:
-python scripts/run_pipeline.py --input-dir /path/to/images --link-mode hardlink
+python scripts/run_naming.py --apply-rename --min-score 0.70 --min-share 0.35
 ```
 
-## Testing & Verification
+> **Note:**
+> For backward compatibility, `--link-mode` is accepted as an alias for `--mode` in `run_materialization.py` and `run_pipeline.py`, and `--apply-rename` is accepted as an alias for `--create-named-output` in `run_naming.py`.
 
-Run the comprehensive test suite (unit and integration tests):
+---
+
+## 8. Python Package API Usage
+
+You can embed the organizer into custom Python workflows:
+
+```python
+from pathlib import Path
+from anime_character_organizer.config import (
+    AuditConfig,
+    CropConfig,
+    EmbeddingConfig,
+    ClusteringConfig,
+    MaterializationConfig,
+)
+from anime_character_organizer.workflows.pipeline import run_pipeline
+
+results = run_pipeline(
+    input_dir=Path("./my_anime_images"),
+    project_dir=Path("./anime_character_pipeline"),
+    audit_config=AuditConfig(phash_threshold=6),
+    crop_config=CropConfig(crop_size=512),
+    embedding_config=EmbeddingConfig(batch_size=16),
+    clustering_config=ClusteringConfig(min_cluster_size=2, cluster_selection_epsilon=0.50),
+    materialization_config=MaterializationConfig(mode="hardlink"),
+    with_tagging=False,
+)
+
+print(f"Materialized run created at: {results['stage_05_materialize']['outputs']['materialized_root']}")
+```
+
+---
+
+## 9. Jupyter Notebooks Workflow
+
+All notebooks are designed to be pedagogical, step-by-step learning and verification interfaces. They import reusable functionality from `anime_character_organizer`, display intermediate statistics, render visual contact sheets, and explain algorithmic principles.
+
+### Notebook Execution Order
+1. [`notebooks/01_dataset_audit.ipynb`](notebooks/01_dataset_audit.ipynb): Audits files, verifies PIL readability, extracts SHA-256 and pHash, and detects duplicates.
+2. [`notebooks/02_crop_preparation.ipynb`](notebooks/02_crop_preparation.ipynb): Runs anime face/person detection, applies crop padding, and flags review items.
+3. [`notebooks/03_ccip_embedding_extraction.ipynb`](notebooks/03_ccip_embedding_extraction.ipynb): Extracts CCIP feature representations and applies mathematical L2 normalization.
+4. [`notebooks/04_hdbscan_clustering.ipynb`](notebooks/04_hdbscan_clustering.ipynb): Performs HDBSCAN density clustering, centroid calculations, and outlier diagnostics.
+5. [`notebooks/05_non_destructive_folder_materialization.ipynb`](notebooks/05_non_destructive_folder_materialization.ipynb): Plans and executes collision-free hardlinking/copying and verifies file integrity.
+6. [`notebooks/06_cluster_naming_with_anime_tagger.ipynb`](notebooks/06_cluster_naming_with_anime_tagger.ipynb): Evaluates representative images with taggers and generates rename proposals.
+
+### Unified Master Notebook
+- [`notebooks/pipeline_master.ipynb`](notebooks/pipeline_master.ipynb): An all-in-one interactive control room orchestrating the entire six-stage pipeline with centralized parameter configuration in the first code cell.
+
+---
+
+## 10. Stage-by-Stage Details and Outputs
+
+### Notebook 01: Dataset Audit and Duplicate Detection
+- **Purpose**: Creates a reliable baseline inventory without moving or modifying files.
+- **Methodology**: Parallel PIL inspection, SHA-256 collision checks, BK-tree discrete metric index for perceptual hash Hamming distance exploration.
+- **Outputs**: `image_metadata.csv`, `valid_images.csv`, `invalid_images.csv`, `exact_duplicate_groups.csv`, `perceptual_duplicate_candidate_pairs.csv`, `perceptual_duplicate_groups.csv`, `summary.json`.
+
+### Notebook 02: Representative Set and Crop Preparation
+- **Purpose**: Prepares identity-focused crops to prevent background clutter from distorting similarity.
+- **Methodology**: Detection ladder (`head -> person -> full image fallback`), margin expansion, square padding, and visual contact sheet generation.
+- **Outputs**: `selected_images_for_detection.csv`, `crop_manifest.csv`, `crop_manifest_with_review_flags.csv`, `selected_region_counts.csv`, `review_reason_counts.csv`, `contact_sheets.csv`, `summary.json`.
+
+### Notebook 03: CCIP Embedding Extraction
+- **Purpose**: Generates high-dimensional vector representations capturing anime character identity.
+- **Methodology**: Inference with CCIP CAFormer model, row-wise L2 vector normalization, array serialization.
+- **Outputs**: `ccip_embeddings_raw.npy`, `ccip_embeddings_l2.npy`, `ccip_embeddings_bundle.npz`, `embedding_manifest.csv`, `embedding_diagnostics.json`, `summary.json`.
+
+### Notebook 04: HDBSCAN Clustering and Cluster Diagnostics
+- **Purpose**: Unsupervised character grouping without requiring a predefined cluster count $K$.
+- **Methodology**: HDBSCAN with excess-of-mass clustering, cosine distance on L2-normalized embeddings, cluster centroid calculation, soft centroid noise reassignment.
+- **Outputs**: `cluster_labels.npy`, `cluster_probabilities.npy`, `outlier_scores.npy`, `cluster_centroids.npz`, `cluster_manifest.csv`, `cluster_summary.csv`, `noise_manifest.csv`, `folder_assignment_manifest.csv`, `cluster_contact_sheets.csv`, `summary.json`.
+
+### Notebook 05: Non-Destructive Folder Materialization
+- **Purpose**: Physically arranges images into character folders while guaranteeing the safety of the source collection.
+- **Methodology**: Generates unique target filenames (`{row:07d}__{stem}{ext}`), links or copies files, and validates existence and file sizes.
+- **Outputs**: `anime_organized_<timestamp>/`, `materialization_plan.csv`, `materialization_result.csv`, `materialization_validation.csv`, `_global_materialization_index.csv`, `summary.json`.
+
+### Notebook 06: Cluster Naming with Anime Tagger
+- **Purpose**: Suggests semantic Danbooru character names for clusters using deep anime taggers.
+- **Methodology**: Representative sample selection, confidence-thresholded tag extraction, weighted cluster voting, and margin checks against runner-up names.
+- **Outputs**: `tagging_input_manifest.csv`, `tagging_manifest.csv`, `cluster_name_suggestions.csv`, `folder_rename_plan.csv`, `naming_contact_sheets.csv`, `summary.json`.
+
+---
+
+## 11. Testing and Code Quality
+
+The repository includes a comprehensive automated test suite and adheres to modern Python code quality standards.
+
+### Running Tests
+Execute the full test suite (unit and integration tests):
 
 ```bash
-python -m unittest discover tests
-# or with pytest:
+# Using pytest (recommended):
 pytest tests
+
+# Using Python's standard unittest runner:
+python -m unittest discover tests
 ```
 
-## Master Pipeline Notebook (`notebooks/pipeline_master.ipynb`)
+### Formatting and Linting
+The codebase is formatted and linted using `ruff`:
 
-For a unified interactive experience, [`notebooks/pipeline_master.ipynb`](notebooks/pipeline_master.ipynb) merges all six stages into a single end-to-end execution interface.
+```bash
+# Format Python source files, scripts, and tests (excluding sandbox/):
+ruff format src/ scripts/ tests/
 
-### Key Features:
-- **Centralized Parameter Cell**: The very first code cell configures all pipeline parameters in one place (paths, thresholds, model names, cluster parameters).
-- **Optimized Clustering Defaults**:
-  - `min_cluster_size = 2` (allows pairs and triplets of characters to form valid clusters instead of being discarded as noise).
-  - `min_samples = 1` (removes the severe reachability distance penalty that previously treated sparse character groups as noise).
-  - `cluster_selection_epsilon = 0.50` (merges points within visual character similarity threshold).
-  - `reassign_noise = True` with `max_reassign_distance = 0.55` (softly reassigns borderline noise images to their closest cluster centroid).
-  - `separate_review_folders = False` (keeps character folders unified rather than fragmenting images across multiple `_review` directories).
-  - `use_perceptual_representatives = False` (prevents similar character poses from being discarded before clustering).
-- **Rich Step-by-Step Visualization**: Interactive progress, cluster summary metrics, contact sheet previews, and distribution plots displayed inline.
+# Check for linting violations and code issues:
+ruff check src/ scripts/ tests/
 
-## Stage-by-Stage Modular Notebooks
-
-The first notebook scans the input image directory recursively and builds a complete metadata index of the collection.
-
-Its main functions are:
-
-- discover candidate image files;
-- validate image readability;
-- detect corrupted or invalid files;
-- compute basic image metadata;
-- compute exact hashes using SHA-256;
-- compute perceptual hashes for near-duplicate detection;
-- generate duplicate candidate groups;
-- save auditable CSV and JSON reports.
-
-This notebook does **not** move, delete, or reorganize images. It only creates a reliable first inventory of the dataset.
-
-Typical outputs include:
-
-```text
-image_metadata.csv
-valid_images.csv
-invalid_images.csv
-exact_duplicate_groups.csv
-perceptual_duplicate_candidate_pairs.csv
-perceptual_duplicate_groups.csv
-summary.json
+# Automatically fix fixable lint issues:
+ruff check --fix src/ scripts/ tests/
 ```
 
-## Notebook 02: Representative Set and Crop Preparation
-
-The second notebook prepares the images for character-identity embedding extraction.
-
-Its main functions are:
-
-- load the valid images from notebook 01;
-- exclude exact duplicate non-representatives;
-- optionally exclude perceptual duplicate non-representatives;
-- detect anime heads;
-- detect anime bodies or persons;
-- choose the best crop for each image;
-- fall back to the full image when detection fails;
-- mark images that require manual review;
-- create crop files;
-- create contact sheets for quick inspection.
-
-The preferred crop hierarchy is:
-
-```text
-head crop → person crop → full image fallback
-```
-
-This is because character identity is usually encoded in the face, hair, eyes, accessories, and upper-body features.
-
-Typical outputs include:
-
-```text
-selected_images_for_detection.csv
-crop_manifest.csv
-crop_manifest_with_review_flags.csv
-selected_region_counts.csv
-review_reason_counts.csv
-contact_sheets.csv
-summary.json
-```
-
-## Notebook 03: CCIP Embedding Extraction
-
-The third notebook extracts anime-character similarity embeddings from the crop files created in notebook 02.
-
-Its main functions are:
-
-- load the crop manifest;
-- validate crop files before inference;
-- run CCIP feature extraction;
-- create raw embedding matrices;
-- create L2-normalized embedding matrices;
-- save embedding manifests;
-- run consistency checks;
-- save diagnostics and reproducibility reports.
-
-The embedding matrix is the numerical representation used for clustering. Each row corresponds to one image crop, and each vector is intended to encode character-level visual similarity.
-
-Typical outputs include:
-
-```text
-ccip_embeddings_raw.npy
-ccip_embeddings_l2.npy
-ccip_embeddings_bundle.npz
-embedding_manifest.csv
-successful_embedding_manifest.csv
-embedding_status.csv
-embedding_diagnostics.json
-consistency_checks.json
-summary.json
-```
-
-## Notebook 04: HDBSCAN Clustering and Cluster Diagnostics
-
-The fourth notebook performs unsupervised clustering over the normalized CCIP embeddings.
-
-Its main functions are:
-
-- load the embedding matrix and manifest from notebook 03;
-- cluster images using HDBSCAN;
-- assign noise labels to uncertain points;
-- compute cluster membership probabilities;
-- compute outlier scores;
-- compute centroid distances;
-- generate cluster summaries;
-- flag low-confidence or suspicious images for manual review;
-- generate representative contact sheets;
-- create a conservative folder-assignment manifest.
-
-The clustering stage intentionally favors conservative grouping. It is better to produce more small clusters than to merge different characters incorrectly.
-
-Typical outputs include:
-
-```text
-cluster_labels.npy
-cluster_probabilities.npy
-outlier_scores.npy
-cluster_centroids.npz
-cluster_manifest.csv
-cluster_summary.csv
-manual_review_manifest.csv
-noise_manifest.csv
-folder_assignment_manifest.csv
-cluster_contact_sheets.csv
-special_contact_sheets.csv
-summary.json
-```
-
-## Notebook 05: Non-Destructive Folder Materialization
-
-The fifth notebook creates the organized folder structure from the clustering results.
-
-Its main functions are:
-
-- load the folder-assignment manifest from notebook 04;
-- build a destination plan;
-- create output folders;
-- materialize images using one of the supported modes:
-  - hard links;
-  - copies;
-  - symbolic links;
-- preserve the original image directory untouched;
-- create per-folder manifests;
-- create per-folder metadata files;
-- generate output contact sheets;
-- write a global materialization index;
-- validate that all materialized files exist.
+---
 
-By default, the pipeline is designed to be non-destructive. Original files are not moved or deleted.
+## 12. Design Principles and Invariants
 
-Typical outputs include:
+1. **Non-Destructive Guarantee**: Source images are strictly treated as read-only. No script, notebook, or module moves, modifies, or deletes files in the input directory.
+2. **Auditability and Traceability**: Every stage writes self-contained run directories with tabular manifests, JSON execution summaries, and visual contact sheets.
+3. **Conservative Identity Grouping**: Over-merging two distinct characters into one folder is treated as a severe error. The default parameters favor smaller, purer clusters over broad mixtures.
+4. **Visual Grouping Precedes Semantic Naming**: Taggers are prone to hallucinations or silence on unrepresented characters. Grouping purely by visual features ensures robust sorting regardless of tagger availability.
+5. **Deterministic Fallbacks**: Robust fallback ladders prevent hard execution failures when processing imperfect real-world art datasets (e.g., cross-device hardlink failures automatically fall back to copies).
 
-```text
-anime_organized_*/
-_global_materialization_index.csv
-_folder_manifest.csv
-_cluster_info.json
-materialization_plan.csv
-materialization_result.csv
-materialization_validation.csv
-final_folder_counts.csv
-operation_counts.csv
-summary.json
-```
+---
 
-## Notebook 06: Cluster Naming with Anime Tagger
+## 13. Known Limitations and Edge Cases
 
-The sixth notebook optionally suggests semantic names for the discovered clusters.
+- **Multiple Characters in One Image**: If an image contains multiple characters, the detector selects the most prominent face or body. Images with multiple distinct characters may end up assigned to a single character's cluster.
+- **Extreme Stylization and Chibi Art**: Heavily distorted, chibi, or monochromatic manga pages may produce embeddings distant from standard full-color illustrations.
+- **Outfit and Hairstyle Changes**: Characters with drastically different outfits, hair colors, or disguises across seasons may be split into separate clusters.
+- **Cross-Filesystem Hardlinks**: Hard links cannot cross filesystem or mount boundaries (`EXDEV`). If the source dataset and project directory reside on different drives, the materialization stage automatically falls back to file copying.
+- **Semantic Tagger Bias**: Anime taggers are trained on specific web datasets (e.g., Danbooru). Characters absent from those training corpora will not receive correct name predictions, but will remain safely grouped in their visual cluster.
 
-Its main functions are:
+---
 
-- load the cluster results from notebook 04;
-- optionally load the materialized folder structure from notebook 05;
-- select representative images from each cluster;
-- run an anime tagger on representative crops;
-- aggregate character tags at the cluster level;
-- decide whether a name is sufficiently reliable;
-- create a folder rename plan;
-- create naming contact sheets;
-- optionally create a second non-destructive named output tree.
+## 14. Troubleshooting
 
-This notebook does not assume that tagger predictions are always correct. A name is accepted only if it passes configurable agreement thresholds, such as minimum tag frequency, weighted score, and margin over the second-best candidate.
+- **Error: Cross-device link (`EXDEV`) during materialization**:
+  *Cause*: Source images and output folder are on different filesystems or physical disks.
+  *Solution*: The pipeline automatically falls back to copy mode by default. You can explicitly pass `--mode copy` to avoid the warning.
+- **Model Download Failures / Timeouts**:
+  *Cause*: Network connectivity issues when downloading ONNX models for head detection or CCIP embeddings.
+  *Solution*: Set `HF_HOME=/path/to/cache` in your environment and retry with an active internet connection. Downloaded models are cached permanently.
+- **Out of Memory during Embedding Extraction**:
+  *Cause*: Batch size too large for available GPU/system RAM.
+  *Solution*: Pass `--batch-size 8` or `--batch-size 4` to `scripts/run_embeddings.py`.
 
-Typical outputs include:
+---
 
-```text
-tagging_input_manifest.csv
-tagging_ready_manifest.csv
-tagging_manifest.csv
-cluster_name_suggestions.csv
-folder_rename_plan.csv
-folder_rename_preview.csv
-naming_contact_sheets.csv
-cluster_naming_metadata_index.csv
-summary.json
-```
+## 15. Security and Privacy Considerations
 
-If enabled, it may also create:
+- **Local Offline Processing**: All processing occurs locally on your machine. Image files, embeddings, and metadata are never uploaded to external servers or cloud services.
+- **Path Traversal Protection**: Relative destination paths are strictly validated through `safe_relative_path` to prevent path traversal outside designated workspace directories.
+- **Untrusted File Safety**: Image files are inspected using PIL image verification routines to safely detect corrupted or malformed headers before downstream deep learning inference.
 
-```text
-anime_named_*/
-```
+---
 
-## Pipeline Summary
+## 16. Contributing and Development
 
-The complete pipeline can be summarized as follows:
+Contributions that improve stability, test coverage, or pedagogical clarity are welcome!
 
-```text
-Input image folder
-    ↓
-01 Dataset audit and duplicate detection
-    ↓
-02 Anime head/person detection and crop preparation
-    ↓
-03 CCIP embedding extraction
-    ↓
-04 HDBSCAN clustering and review diagnostics
-    ↓
-05 Non-destructive folder materialization
-    ↓
-06 Optional semantic naming with anime taggers
-```
+1. Fork the repository and create a feature branch.
+2. Follow PEP 8 guidelines and format code using `ruff format src/ scripts/ tests/`.
+3. Verify that all tests pass (`pytest tests`).
+4. Maintain the strict non-destructive invariant for user data.
+5. **Strict Sandbox Invariant**: Never inspect, modify, stage, or commit files located in any `sandbox/` directory.
 
-Each stage writes its own outputs under:
+---
 
-```text
-anime_character_pipeline/runs/
-```
+## 17. License and Disclaimer
 
-This makes the pipeline auditable and reproducible. A later stage can always be traced back to the exact run directory that generated its input.
+This project is released for educational and research purposes.
 
-## Design Principles
-
-### 1. Non-destructive processing
-
-The original image collection should not be modified. All organized outputs are written to new directories.
-
-### 2. Auditability
-
-Every major step writes CSV, JSON, and diagnostic outputs. This makes it easier to understand what happened and debug bad results.
-
-### 3. Modularity
-
-Each notebook performs one logical stage. This makes the pipeline easier to test, rerun, and improve.
-
-### 4. Conservative clustering
-
-The pipeline prefers uncertain or smaller clusters over aggressive merging. Incorrectly merging two characters is usually worse than splitting one character into multiple groups.
-
-### 5. Naming after clustering
-
-The project separates visual grouping from semantic naming. The tagger is used only after clusters have been discovered.
-
-### 6. Manual review support
-
-Contact sheets, review manifests, outlier scores, and confidence metrics are generated to make human inspection easier.
-
-## Expected Limitations
-
-The pipeline may struggle with:
-
-- images containing multiple characters;
-- rare or obscure characters;
-- original characters;
-- heavy stylization;
-- alternate outfits;
-- chibi or deformed versions;
-- extreme crops;
-- occluded faces;
-- characters with very similar designs;
-- low-resolution or corrupted images;
-- images where the detector chooses the wrong region.
-
-These limitations are expected. The goal is not perfect automation, but a strong first-pass organization that reduces manual sorting effort.
-
-## Recommended Usage
-
-A typical workflow is:
-
-1. Place the input images in a separate source directory.
-2. Run notebook 01.
-3. Inspect invalid files and duplicate reports.
-4. Run notebook 02.
-5. Inspect crop contact sheets.
-6. Run notebook 03.
-7. Run notebook 04.
-8. Inspect cluster contact sheets and review summaries.
-9. Run notebook 05 to create the organized folder tree.
-10. Run notebook 06 if semantic folder-name suggestions are desired.
-11. Manually review uncertain clusters and rename folders if necessary.
-
-## Important Safety Notes
-
-Do not run the materialization notebooks on a unique image collection without backups. Although the pipeline is designed to be non-destructive, mistakes in paths, permissions, or configuration can still produce unwanted results.
-
-Before running notebooks 05 or 06 with output creation enabled, verify:
-
-- the selected source directory;
-- the selected output directory;
-- the materialization mode;
-- available disk space;
-- whether hard links, copies, or symbolic links are appropriate.
-
-## Repository Status
-
-This repository has been structured as a clean, modular Python package (`anime_character_organizer`). All core algorithms, configuration dataclasses, transformations, detection wrappers, and file operations are extracted into testable modules with headless CLI executables. The Jupyter notebooks serve as readable, top-to-bottom orchestration and demonstration interfaces.
-
-## License and Responsibility
-
-This repository does not grant rights over any images processed with it. Users are responsible for ensuring that they have the right to store, process, organize, or redistribute any images they use with this pipeline.
-
-The code and notebooks are provided as-is, without warranty. Use them at your own risk.
-
-## Final Note
-
-This project demonstrates how a practical unsupervised image-organization workflow can be built from modular notebook stages. Its main value is educational: it shows how validation, duplicate detection, cropping, embedding extraction, clustering, materialization, and optional semantic naming can be combined into a coherent pipeline for anime-style character images.
+Users are solely responsible for ensuring they possess the necessary rights and permissions to store, process, organize, or distribute any images processed by this software. The authors provide the software "as-is", without warranty of any kind, express or implied.
