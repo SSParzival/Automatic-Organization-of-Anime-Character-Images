@@ -50,11 +50,33 @@ Users are encouraged to inspect the notebooks carefully before running them on l
 
 ## Project Structure
 
-The project is organized around six main Jupyter notebooks. Each notebook corresponds to one stage of the pipeline and produces artifacts consumed by the following stage.
+The repository is structured as a modular Python package (`anime_character_organizer`) with standalone CLI scripts, interactive Jupyter notebooks for inspection and experimentation, and an automated test suite.
 
 ```text
 .
-├── notebooks/
+├── src/anime_character_organizer/   # Core reusable package
+│   ├── config.py                    # Strongly typed dataclass configurations
+│   ├── exceptions.py                # Typed domain exceptions hierarchy
+│   ├── utils/                       # Common utilities (paths, hashing, BK-tree, runs, etc.)
+│   ├── data/                        # Image auditing, validation, duplicate detection
+│   ├── preprocessing/               # Geometry, anime face/body detection, cropping
+│   ├── embeddings/                  # CCIP feature extraction and normalization
+│   ├── clustering/                  # HDBSCAN clustering, centroids, review diagnostics
+│   ├── materialization/             # Non-destructive file linking/copying and validation
+│   ├── tagging/                     # Anime tagger inference, name aggregation & voting
+│   ├── visualization/               # Contact sheets and diagnostic plots
+│   └── workflows/                   # High-level pipeline stage orchestrators
+│
+├── scripts/                         # Standalone headless CLI executables
+│   ├── run_audit.py                 # Stage 1: Dataset audit & duplicate detection
+│   ├── run_crop_preparation.py      # Stage 2: Face/body detection & crop extraction
+│   ├── run_embeddings.py            # Stage 3: Embedding extraction
+│   ├── run_clustering.py            # Stage 4: HDBSCAN clustering & diagnostics
+│   ├── run_materialization.py       # Stage 5: Non-destructive folder materialization
+│   ├── run_naming.py                # Stage 6: Character tag inference & naming
+│   └── run_pipeline.py              # End-to-end master pipeline runner
+│
+├── notebooks/                       # Interactive demonstration & orchestration notebooks
 │   ├── 01_dataset_audit.ipynb
 │   ├── 02_crop_preparation.ipynb
 │   ├── 03_ccip_embedding_extraction.ipynb
@@ -62,23 +84,75 @@ The project is organized around six main Jupyter notebooks. Each notebook corres
 │   ├── 05_non_destructive_folder_materialization.ipynb
 │   └── 06_cluster_naming_with_anime_tagger.ipynb
 │
-├── anime_character_pipeline/
-│   ├── runs/
-│   │   ├── 01_dataset_audit_*/
-│   │   ├── 02_crop_preparation_*/
-│   │   ├── 03_ccip_embeddings_*/
-│   │   ├── 04_hdbscan_clustering_*/
-│   │   ├── 05_folder_materialization_*/
-│   │   └── 06_cluster_naming_*/
-│   │
-│   └── organized_output/
-│       ├── anime_organized_*/
-│       └── anime_named_*/
+├── tests/                           # Unit and integration test suite
+│   ├── unit/                        # Tests for all domain modules
+│   └── integration/                 # End-to-end workflow tests
 │
+├── pyproject.toml                   # Modern PEP 517/518 build and package definition
 └── README.md
 ```
 
-The exact notebook filenames may differ depending on how they were saved locally, but the logical structure is the one described below.
+## Installation & Setup
+
+### 1. Environment Setup
+
+Create and activate a Python 3.10+ virtual environment:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### 2. Install Package
+
+Install `anime_character_organizer` in editable mode:
+
+```bash
+pip install -e .
+```
+
+To include development and testing dependencies:
+
+```bash
+pip install -e ".[dev]"
+```
+
+## CLI Execution (Headless Workflows)
+
+Every stage of the pipeline can be executed independently from the command line without opening a Jupyter notebook:
+
+```bash
+# Stage 1: Audit dataset and detect duplicates
+python scripts/run_audit.py --input-dir /path/to/images
+
+# Stage 2: Prepare representative crops (auto-discovers latest audit run)
+python scripts/run_crop_preparation.py
+
+# Stage 3: Extract CCIP character embeddings
+python scripts/run_embeddings.py
+
+# Stage 4: Run HDBSCAN clustering and diagnostic analysis
+python scripts/run_clustering.py --min-cluster-size 3
+
+# Stage 5: Materialize non-destructive organized folders
+python scripts/run_materialization.py --link-mode hardlink
+
+# Stage 6: Predict character tags and plan folder renaming
+python scripts/run_naming.py --apply-rename
+
+# Alternatively, run the complete end-to-end pipeline in one command:
+python scripts/run_pipeline.py --input-dir /path/to/images --link-mode hardlink
+```
+
+## Testing & Verification
+
+Run the comprehensive test suite (unit and integration tests):
+
+```bash
+python -m unittest discover tests
+# or with pytest:
+pytest tests
+```
 
 ## Notebook 01: Dataset Audit, Validation, and Duplicate Index
 
@@ -390,7 +464,7 @@ Before running notebooks 05 or 06 with output creation enabled, verify:
 
 ## Repository Status
 
-This repository is an educational prototype. It is suitable for experimentation, learning, and adapting the workflow to personal collections. It is not maintained as a polished Python package and should not be assumed to follow production software engineering standards.
+This repository has been structured as a clean, modular Python package (`anime_character_organizer`). All core algorithms, configuration dataclasses, transformations, detection wrappers, and file operations are extracted into testable modules with headless CLI executables. The Jupyter notebooks serve as readable, top-to-bottom orchestration and demonstration interfaces.
 
 ## License and Responsibility
 
