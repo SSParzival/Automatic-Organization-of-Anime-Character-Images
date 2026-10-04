@@ -35,6 +35,39 @@ class TestMaterialization(unittest.TestCase):
         p2 = ensure_unique_destination_path(dest, used)
         self.assertEqual(p2.name, "0000005__my_image__dup001.png")
 
+    def test_build_materialization_plan(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            out_dir = base / "organized"
+            src1 = base / "img1.png"
+            src2 = base / "img2.png"
+            src1.touch()
+            src2.touch()
+
+            assignment_df = pd.DataFrame([
+                {
+                    "embedding_row": 0,
+                    "cluster_label": 1,
+                    "proposed_folder": "cluster_00001_unknown",
+                    "source_path": src1.as_posix(),
+                },
+                {
+                    "embedding_row": 1,
+                    "cluster_label": 1,
+                    "proposed_folder": "cluster_00001_unknown",
+                    "source_path": src2.as_posix(),
+                },
+            ])
+
+            plan_df = build_materialization_plan(assignment_df, out_dir)
+            self.assertEqual(len(plan_df), 2)
+            self.assertIn("destination_path", plan_df.columns)
+            self.assertIn("destination_filename", plan_df.columns)
+            self.assertNotEqual(
+                plan_df.iloc[0]["destination_path"],
+                plan_df.iloc[1]["destination_path"],
+            )
+
     def test_materialize_operations(self):
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)

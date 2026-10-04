@@ -56,6 +56,8 @@ class TestUtils(unittest.TestCase):
 
             self.assertEqual(path_to_posix(sub), sub.as_posix())
             self.assertEqual(safe_relative_path(sub, base), "a/b.txt")
+            outside_path = Path("/tmp/outside/file.txt")
+            self.assertEqual(safe_relative_path(outside_path, base), outside_path.resolve().as_posix())
             self.assertEqual(normalize_path_string(sub), sub.resolve().as_posix())
 
     def test_hashing(self):
