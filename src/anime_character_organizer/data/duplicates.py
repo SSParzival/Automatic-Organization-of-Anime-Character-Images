@@ -103,11 +103,11 @@ def find_perceptual_duplicates(
         (perceptual_candidates_df, perceptual_groups_df)
     """
     if valid_df.empty or "phash" not in valid_df.columns:
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(columns=PERCEPTUAL_CANDIDATE_COLUMNS), pd.DataFrame(columns=PERCEPTUAL_GROUP_COLUMNS)
 
     phash_df = valid_df[valid_df["phash"].notna()].copy()
     if phash_df.empty:
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(columns=PERCEPTUAL_CANDIDATE_COLUMNS), pd.DataFrame(columns=PERCEPTUAL_GROUP_COLUMNS)
 
     phash_df["phash_int"] = phash_df["phash"].map(hash_hex_to_int)
     items = list(zip(phash_df["path"].tolist(), phash_df["phash_int"].tolist()))

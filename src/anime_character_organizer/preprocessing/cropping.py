@@ -95,7 +95,7 @@ def process_image_for_crop(
 
     try:
         with Image.open(path) as img:
-            img = ImageOps.exif_transpose(img.convert("RGB"))
+            img = ImageOps.exif_transpose(img).convert("RGB")
             width, height = img.size
             record["source_width"] = int(width)
             record["source_height"] = int(height)

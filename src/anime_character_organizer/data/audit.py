@@ -13,7 +13,7 @@ from PIL import Image, ImageOps
 from tqdm.auto import tqdm
 
 from ..utils.hashing import imagehash_to_hex, sha256_file
-from ..utils.paths import path_to_posix, safe_relative_path
+from ..utils.paths import checked_path, path_to_posix, safe_relative_path
 from ..utils.time import now_iso
 
 Image.MAX_IMAGE_PIXELS = 300_000_000
@@ -33,14 +33,15 @@ def scan_candidate_files(
     Returns:
         Sorted list of matching Path objects.
     """
-    input_dir = Path(input_dir).resolve()
+    input_dir = checked_path(input_dir)
     valid_extensions = {ext.lower() for ext in valid_extensions}
     candidates: List[Path] = []
 
-    for root, _, files in os.walk(input_dir):
+    for root, dirs, files in os.walk(input_dir, followlinks=False):
+        dirs[:] = [d for d in dirs if d != "sandbox" and not (Path(root) / d).is_symlink()]
         for name in files:
             path = Path(root) / name
-            if path.suffix.lower() in valid_extensions:
+            if path.suffix.lower() in valid_extensions and not path.is_symlink():
                 candidates.append(path)
 
     return sorted(candidates)
@@ -51,8 +52,8 @@ def inspect_image(path: Union[str, Path], input_dir: Union[str, Path]) -> Dict[s
     Inspect an image file: verify readability, collect dimensions/format,
     and compute SHA-256 and perceptual hashes.
     """
-    path = Path(path).resolve()
-    input_dir = Path(input_dir).resolve()
+    path = checked_path(path)
+    input_dir = checked_path(input_dir)
 
     record: Dict[str, Any] = {
         "path": path_to_posix(path),
@@ -100,7 +101,7 @@ def inspect_image(path: Union[str, Path], input_dir: Union[str, Path]) -> Dict[s
             record["is_animated"] = bool(getattr(img, "is_animated", False))
             record["n_frames"] = int(getattr(img, "n_frames", 1))
 
-            rgb = ImageOps.exif_transpose(img.convert("RGB"))
+            rgb = ImageOps.exif_transpose(img).convert("RGB")
 
             record["sha256"] = sha256_file(path)
             record["phash"] = imagehash_to_hex(imagehash.phash(rgb, hash_size=8))
@@ -198,7 +199,9 @@ def audit_images(
         "processed_at",
     ]
 
-    metadata_df = pd.DataFrame(records).reindex(columns=ordered_columns)
+    metadata_df = (
+        pd.DataFrame(records).reindex(columns=ordered_columns).sort_values("path", kind="stable").reset_index(drop=True)
+    )
     valid_df = metadata_df[metadata_df["status"].eq("valid")].copy().reset_index(drop=True)
     invalid_df = metadata_df[metadata_df["status"].ne("valid")].copy().reset_index(drop=True)
 

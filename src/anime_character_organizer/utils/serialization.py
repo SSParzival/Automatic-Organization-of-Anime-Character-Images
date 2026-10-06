@@ -22,7 +22,7 @@ def safe_bool_series(series: pd.Series) -> pd.Series:
     """Vectorized coercion of a pandas Series to boolean."""
     if series.dtype == bool:
         return series
-    return series.astype(str).str.lower().isin(["true", "1", "yes", "y"])
+    return series.astype(str).str.strip().str.lower().isin(["true", "1", "yes", "y"])
 
 
 def safe_float(value: Any, default: float = np.nan) -> float:
@@ -84,5 +84,5 @@ def safe_read_csv(path: Any, **kwargs: Any) -> pd.DataFrame:
         return pd.DataFrame()
     try:
         return pd.read_csv(p, **kwargs)
-    except Exception:
+    except pd.errors.EmptyDataError:
         return pd.DataFrame()

@@ -10,7 +10,7 @@ class UnionFind:
 
     def __init__(self, items: Iterable[Any]):
         self.parent: Dict[Any, Any] = {item: item for item in items}
-        self.rank: Dict[Any, int] = {item: 0 for item in items}
+        self.rank: Dict[Any, int] = {item: 0 for item in self.parent}
 
     def find(self, item: Any) -> Any:
         if item not in self.parent:

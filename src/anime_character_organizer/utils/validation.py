@@ -32,7 +32,7 @@ def validate_image_file(path: Union[str, Path]) -> Tuple[bool, Optional[str], Op
             img.verify()
 
         with Image.open(path) as img:
-            img = ImageOps.exif_transpose(img.convert("RGB"))
+            img = ImageOps.exif_transpose(img).convert("RGB")
             width, height = img.size
 
         if width <= 0 or height <= 0:

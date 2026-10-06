@@ -13,6 +13,8 @@ from ..exceptions import EmbeddingError
 
 def batch_iterable(values: Iterable[Any], batch_size: int) -> Generator[List[Any], None, None]:
     """Yield successive slices of length batch_size from an iterable."""
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive.")
     items = list(values)
     for start in range(0, len(items), batch_size):
         yield items[start : start + batch_size]
