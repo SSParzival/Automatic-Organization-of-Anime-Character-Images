@@ -18,7 +18,7 @@ from ..materialization.validation import validate_materialized_files
 from ..utils.naming import sanitize_folder_name
 from ..utils.paths import checked_path, normalize_path_string
 from ..utils.runs import create_run_directory, find_latest_run
-from ..utils.serialization import safe_bool
+from ..utils.serialization import json_safe_value, require_columns, safe_bool
 from ..utils.time import now_iso
 from ..visualization.contact_sheet import create_contact_sheet
 
@@ -63,6 +63,11 @@ def run_folder_materialization(
         raise ConfigurationError(f"Required folder assignment manifest missing: {assignment_path}")
 
     folder_assignment_df = pd.read_csv(assignment_path)
+    require_columns(
+        folder_assignment_df,
+        {source_column, "proposed_folder", "embedding_row", "cluster_label", "requires_manual_review"},
+        "Folder assignment manifest",
+    )
     cluster_summary_df = pd.read_csv(summary_path_in) if summary_path_in.exists() else pd.DataFrame()
 
     run_dir = create_run_directory(project_dir, "05_folder_materialization")
@@ -180,7 +185,7 @@ def run_folder_materialization(
                 "created_at": now_iso(),
             }
             with (folder_dir / "_cluster_info.json").open("w", encoding="utf-8") as f:
-                json.dump(info, f, ensure_ascii=False, indent=2)
+                json.dump(json_safe_value(info), f, ensure_ascii=False, indent=2, allow_nan=False)
 
         # Contact sheet per folder
         dest_paths = [Path(p) for p in folder_rows["destination_path"].head(24) if Path(p).exists()]
@@ -243,7 +248,7 @@ def run_folder_materialization(
         "output_count_matches_input": bool(len(materialization_result_df) == len(assignment_df)),
     }
     with (reports_dir / "consistency_checks.json").open("w", encoding="utf-8") as f:
-        json.dump(checks, f, ensure_ascii=False, indent=2)
+        json.dump(json_safe_value(checks), f, ensure_ascii=False, indent=2, allow_nan=False)
 
     summary = {
         "run_id": run_id,
@@ -268,7 +273,7 @@ def run_folder_materialization(
     }
     summary_path = reports_dir / "summary.json"
     with summary_path.open("w", encoding="utf-8") as f:
-        json.dump(summary, f, ensure_ascii=False, indent=2)
+        json.dump(json_safe_value(summary), f, ensure_ascii=False, indent=2, allow_nan=False)
 
     return {
         "run_id": run_id,

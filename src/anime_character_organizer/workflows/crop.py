@@ -19,7 +19,7 @@ from ..exceptions import ConfigurationError
 from ..preprocessing.cropping import add_review_flags, process_image_for_crop
 from ..utils.paths import checked_path, normalize_path_string
 from ..utils.runs import create_run_directory, find_latest_run
-from ..utils.serialization import safe_bool_series, safe_read_csv
+from ..utils.serialization import json_safe_value, require_columns, safe_bool_series, safe_read_csv
 from ..utils.time import now_iso
 from ..visualization.contact_sheet import create_contact_sheet
 
@@ -61,6 +61,7 @@ def run_crop_preparation(
         raise ConfigurationError(f"Required valid images file missing: {valid_images_path}")
 
     valid_df = pd.read_csv(valid_images_path)
+    require_columns(valid_df, {"path", "relative_path"}, "Valid-image manifest")
     exact_duplicates_path = checked_path(previous_run_dir / "tables" / "exact_duplicate_groups.csv")
     exact_duplicates_df = safe_read_csv(exact_duplicates_path)
 
@@ -227,7 +228,7 @@ def run_crop_preparation(
         "all_successful_crops_exist": bool(existing_crop_count == expected_crop_count),
     }
     with (reports_dir / "crop_file_verification.json").open("w", encoding="utf-8") as f:
-        json.dump(verification, f, ensure_ascii=False, indent=2)
+        json.dump(json_safe_value(verification), f, ensure_ascii=False, indent=2, allow_nan=False)
 
     summary = {
         "run_id": run_id,
@@ -265,7 +266,7 @@ def run_crop_preparation(
 
     summary_path = reports_dir / "summary.json"
     with summary_path.open("w", encoding="utf-8") as f:
-        json.dump(summary, f, ensure_ascii=False, indent=2)
+        json.dump(json_safe_value(summary), f, ensure_ascii=False, indent=2, allow_nan=False)
 
     return {
         "run_id": run_id,

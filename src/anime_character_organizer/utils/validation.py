@@ -34,8 +34,8 @@ def validate_image_file(path: Union[str, Path]) -> Tuple[bool, Optional[str], Op
             img.verify()
 
         with Image.open(path) as source_image:
-            img = ImageOps.exif_transpose(source_image).convert("RGB")
-            width, height = img.size
+            rgb = ImageOps.exif_transpose(source_image).convert("RGB")
+            width, height = rgb.size
 
         if width <= 0 or height <= 0:
             return False, "InvalidImageSize", "Image has non-positive dimensions."

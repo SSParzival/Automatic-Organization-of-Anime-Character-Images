@@ -94,3 +94,19 @@ def test_existing_output_is_preserved(completed_pipeline, tmp_path):
             tmp_path / "other", completed_pipeline["cluster"]["run_dir"], final_output_dir=output, show_progress=False
         )
     assert marker.read_text() == "user artifact"
+
+
+@pytest.mark.parametrize("mode", ["copy", "hardlink", "symlink"])
+def test_materialization_workflow_supports_all_documented_modes(completed_pipeline, tmp_path, mode):
+    output = run_folder_materialization(
+        tmp_path / "mode_workspace",
+        completed_pipeline["cluster"]["run_dir"],
+        materialization_mode=mode,
+        show_progress=False,
+    )
+    assert output["validation_df"]["is_valid"].all()
+    assert len(output["result_df"]) == 10
+    from pathlib import Path
+
+    for path in output["plan_df"]["destination_path"]:
+        assert Path(path).exists()

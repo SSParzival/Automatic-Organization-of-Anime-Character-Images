@@ -24,6 +24,7 @@ from ..config import validate_parameters
 from ..exceptions import ConfigurationError
 from ..utils.paths import checked_path
 from ..utils.runs import create_run_directory, find_latest_run
+from ..utils.serialization import json_safe_value
 from ..utils.time import now_iso
 from ..visualization.contact_sheet import create_contact_sheet
 from ..visualization.plots import plot_cluster_size_distribution, plot_probability_and_outlier_distributions
@@ -370,7 +371,7 @@ def run_clustering(
         }
         meta_p = cluster_metadata_dir / f"{stub}.json"
         with meta_p.open("w", encoding="utf-8") as f:
-            json.dump(meta, f, ensure_ascii=False, indent=2)
+            json.dump(json_safe_value(meta), f, ensure_ascii=False, indent=2, allow_nan=False)
         metadata_rows.append({"cluster_label": lbl, "cluster_folder_stub": stub, "metadata_path": meta_p.as_posix()})
 
     metadata_index_df = pd.DataFrame(metadata_rows)
@@ -397,7 +398,7 @@ def run_clustering(
         "cluster_count_non_negative": bool(cluster_count >= 0),
     }
     with (reports_dir / "consistency_checks.json").open("w", encoding="utf-8") as f:
-        json.dump(checks, f, ensure_ascii=False, indent=2)
+        json.dump(json_safe_value(checks), f, ensure_ascii=False, indent=2, allow_nan=False)
 
     summary = {
         "run_id": run_id,
@@ -447,7 +448,7 @@ def run_clustering(
 
     summary_path = reports_dir / "summary.json"
     with summary_path.open("w", encoding="utf-8") as f:
-        json.dump(summary, f, ensure_ascii=False, indent=2)
+        json.dump(json_safe_value(summary), f, ensure_ascii=False, indent=2, allow_nan=False)
 
     return {
         "run_id": run_id,

@@ -38,8 +38,16 @@ def create_contact_sheet(
     """
     if thumb_size <= 0 or columns <= 0:
         raise ValueError("Contact sheet dimensions must be positive.")
-    valid_paths = [checked_path(p) for p in image_paths if pd.notna(p)]
-    valid_paths = [p for p in valid_paths if p.exists()]
+    valid_paths = []
+    for value in image_paths:
+        if pd.isna(value):
+            continue
+        path = checked_path(value, allow_leaf_symlink=True)
+        if path.is_symlink():
+            target = path.readlink()
+            path = checked_path(target if target.is_absolute() else path.parent / target)
+        if path.exists():
+            valid_paths.append(path)
     if not valid_paths:
         return False
 

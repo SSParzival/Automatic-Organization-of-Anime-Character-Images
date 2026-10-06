@@ -7,6 +7,7 @@ from typing import Tuple
 
 import numpy as np
 
+from ..config import validate_parameters
 from ..exceptions import ClusteringError
 
 
@@ -24,6 +25,14 @@ def fit_hdbscan(
     Returns:
         (labels, probabilities, outlier_scores, backend_used)
     """
+    validate_parameters(
+        min_cluster_size=min_cluster_size,
+        min_samples=min_samples,
+        cluster_selection_epsilon=cluster_selection_epsilon,
+        cluster_selection_method=cluster_selection_method,
+    )
+    if embeddings.ndim != 2 or len(embeddings) < 2 or not np.isfinite(embeddings).all():
+        raise ClusteringError("Clustering requires at least two finite embedding rows.")
     backend = "hdbscan"
     try:
         import hdbscan
@@ -62,7 +71,8 @@ def fit_hdbscan(
 
         clusterer = HDBSCAN(
             min_cluster_size=min_cluster_size,
-            min_samples=min_samples,
+            # sklearn counts the point itself; contrib hdbscan does not.
+            min_samples=min(min_samples + 1, len(embeddings)),
             cluster_selection_epsilon=cluster_selection_epsilon,
             metric=metric,
             cluster_selection_method=cluster_selection_method,

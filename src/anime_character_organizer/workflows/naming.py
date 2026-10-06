@@ -24,7 +24,7 @@ from ..tagging.sampling import select_cluster_samples
 from ..utils.naming import sanitize_filename_component
 from ..utils.paths import checked_path, normalize_path_string
 from ..utils.runs import create_run_directory, find_latest_run
-from ..utils.serialization import safe_bool, safe_json_dumps
+from ..utils.serialization import json_safe_value, require_columns, safe_bool, safe_json_dumps
 from ..utils.time import now_iso
 from ..utils.validation import validate_image_file
 from ..visualization.contact_sheet import create_contact_sheet
@@ -83,6 +83,16 @@ def run_cluster_naming(
 
     cluster_manifest_df = pd.read_csv(cluster_manifest_path)
     folder_assignment_df = pd.read_csv(folder_assignment_path)
+    require_columns(
+        cluster_manifest_df,
+        {"cluster_label", "crop_path", "source_path", "embedding_row", "requires_manual_review", "cluster_folder_stub"},
+        "Cluster manifest",
+    )
+    require_columns(
+        folder_assignment_df,
+        {"cluster_label", "source_path", "embedding_row", "proposed_folder"},
+        "Folder assignment manifest",
+    )
 
     run_dir = create_run_directory(project_dir, "06_cluster_naming")
     run_id = run_dir.name.removeprefix("06_cluster_naming_")
@@ -307,7 +317,7 @@ def run_cluster_naming(
         }
         meta_p = naming_metadata_dir / f"{sanitize_filename_component(stub)}.json"
         with meta_p.open("w", encoding="utf-8") as f:
-            json.dump(meta, f, ensure_ascii=False, indent=2)
+            json.dump(json_safe_value(meta), f, ensure_ascii=False, indent=2, allow_nan=False)
         metadata_rows.append({"cluster_label": lbl, "cluster_folder_stub": stub, "metadata_path": meta_p.as_posix()})
 
     metadata_index_path = tables_dir / "cluster_naming_metadata_index.csv"
@@ -425,7 +435,7 @@ def run_cluster_naming(
 
     summary_path = reports_dir / "summary.json"
     with summary_path.open("w", encoding="utf-8") as f:
-        json.dump(summary, f, ensure_ascii=False, indent=2)
+        json.dump(json_safe_value(summary), f, ensure_ascii=False, indent=2, allow_nan=False)
 
     return {
         "run_id": run_id,

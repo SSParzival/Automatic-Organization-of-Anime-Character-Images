@@ -121,3 +121,40 @@ def test_cluster_refuses_invalid_row_mapping_before_creating_run(tmp_path, rows)
     with pytest.raises(ConfigurationError, match="exactly once"):
         run_clustering(tmp_path, run)
     assert not (tmp_path / "runs").exists()
+
+
+def test_strict_json_replaces_nonfinite_metrics():
+    import json
+
+    from anime_character_organizer.utils.serialization import safe_json_dumps
+
+    output = safe_json_dumps({"metric": float("nan"), "nested": [np.float32(float("inf")), np.int64(2)]})
+    assert json.loads(output, parse_constant=lambda value: pytest.fail(f"Invalid JSON value {value}")) == {
+        "metric": None,
+        "nested": [None, 2],
+    }
+
+
+def test_malformed_manifest_has_actionable_schema_error(tmp_path):
+    from anime_character_organizer.workflows.crop import run_crop_preparation
+
+    previous = tmp_path / "previous"
+    (previous / "tables").mkdir(parents=True)
+    pd.DataFrame({"unexpected_column": [1]}).to_csv(previous / "tables/valid_images.csv", index=False)
+    with pytest.raises(ConfigurationError, match="missing required columns"):
+        run_crop_preparation(tmp_path / "workspace", previous)
+    assert not (tmp_path / "workspace/runs").exists()
+
+
+def test_sklearn_fallback_preserves_min_samples_convention():
+    from unittest.mock import MagicMock
+
+    from anime_character_organizer.clustering.algorithm import fit_hdbscan
+
+    model = MagicMock()
+    model.fit_predict.return_value = np.array([0, 0, 1, 1])
+    model.probabilities_ = np.array([0.9, 0.9, 0.9, 0.9])
+    with patch.dict("sys.modules", {"hdbscan": None}), patch("sklearn.cluster.HDBSCAN", return_value=model) as factory:
+        _, _, _, backend = fit_hdbscan(np.ones((4, 3)), min_samples=1)
+    assert backend == "sklearn"
+    assert factory.call_args.kwargs["min_samples"] == 2

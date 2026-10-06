@@ -15,6 +15,7 @@ from ..data.duplicates import find_exact_duplicates, find_perceptual_duplicates
 from ..exceptions import ConfigurationError
 from ..utils.paths import checked_path
 from ..utils.runs import create_run_directory
+from ..utils.serialization import json_safe_value
 from ..utils.time import now_iso
 
 
@@ -69,7 +70,7 @@ def run_dataset_audit(
         "created_at": now_iso(),
     }
     with (reports_dir / "scan_report.json").open("w", encoding="utf-8") as f:
-        json.dump(scan_report, f, ensure_ascii=False, indent=2)
+        json.dump(json_safe_value(scan_report), f, ensure_ascii=False, indent=2, allow_nan=False)
 
     if not candidate_files:
         raise ConfigurationError(f"No candidate image files found in {input_dir} with extensions {valid_extensions}")
@@ -136,7 +137,7 @@ def run_dataset_audit(
 
     summary_path = reports_dir / "summary.json"
     with summary_path.open("w", encoding="utf-8") as f:
-        json.dump(summary, f, ensure_ascii=False, indent=2)
+        json.dump(json_safe_value(summary), f, ensure_ascii=False, indent=2, allow_nan=False)
 
     return {
         "run_id": run_id,

@@ -47,7 +47,7 @@ def safe_int(value: Any, default: int = 0) -> int:
 
 def safe_json_dumps(value: Any) -> str:
     """Serialize object to JSON string with UTF-8 support and deterministic key sorting."""
-    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    return json.dumps(json_safe_value(value), ensure_ascii=False, sort_keys=True, allow_nan=False)
 
 
 def parse_dict_like(value: Any) -> Dict[str, Any]:
@@ -86,3 +86,25 @@ def safe_read_csv(path: Any, **kwargs: Any) -> pd.DataFrame:
         return pd.read_csv(p, **kwargs)
     except pd.errors.EmptyDataError:
         return pd.DataFrame()
+
+
+def json_safe_value(value: Any) -> Any:
+    """Convert nested NumPy scalars/non-finite metrics to strict JSON values."""
+    if isinstance(value, dict):
+        return {key: json_safe_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_safe_value(item) for item in value]
+    if isinstance(value, np.generic):
+        return json_safe_value(value.item())
+    if isinstance(value, float) and not np.isfinite(value):
+        return None
+    return value
+
+
+def require_columns(frame: pd.DataFrame, columns: set[str], context: str) -> None:
+    """Reject malformed stage tables with an actionable schema error."""
+    from ..exceptions import ConfigurationError
+
+    missing = columns - set(frame.columns)
+    if missing:
+        raise ConfigurationError(f"{context} missing required columns: {sorted(missing)}")

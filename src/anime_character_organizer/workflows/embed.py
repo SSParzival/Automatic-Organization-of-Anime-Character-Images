@@ -18,7 +18,7 @@ from ..embeddings.normalization import l2_normalize_matrix
 from ..exceptions import ConfigurationError, EmbeddingError, InvalidImageError
 from ..utils.paths import checked_path, normalize_path_string
 from ..utils.runs import create_run_directory, find_latest_run
-from ..utils.serialization import safe_bool_series
+from ..utils.serialization import json_safe_value, require_columns, safe_bool_series
 from ..utils.time import now_iso
 from ..utils.validation import validate_image_file
 
@@ -57,6 +57,7 @@ def run_embedding_extraction(
         raise ConfigurationError(f"Required crop manifest not found: {crop_manifest_path}")
 
     crop_df = pd.read_csv(crop_manifest_path)
+    require_columns(crop_df, {"crop_path", "source_path", "status", "relative_path"}, "Crop manifest")
     if "crop_path" not in crop_df.columns or "status" not in crop_df.columns:
         raise ConfigurationError("Crop manifest missing required columns 'crop_path' or 'status'.")
 
@@ -241,7 +242,7 @@ def run_embedding_extraction(
 
     summary_path = reports_dir / "summary.json"
     with summary_path.open("w", encoding="utf-8") as f:
-        json.dump(summary, f, ensure_ascii=False, indent=2)
+        json.dump(json_safe_value(summary), f, ensure_ascii=False, indent=2, allow_nan=False)
 
     return {
         "run_id": run_id,
