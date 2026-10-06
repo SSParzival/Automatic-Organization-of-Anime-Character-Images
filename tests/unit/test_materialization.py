@@ -27,14 +27,15 @@ class TestMaterialization(unittest.TestCase):
         self.assertEqual(fn, "0000005__my_image.png")
 
         used = set()
-        dest = Path("/tmp/folder/0000005__my_image.png")
-        p1 = ensure_unique_destination_path(dest, used)
-        self.assertEqual(p1, dest)
-        self.assertIn(dest.as_posix(), used)
+        with tempfile.TemporaryDirectory() as td:
+            dest = Path(td) / "0000005__my_image.png"
+            p1 = ensure_unique_destination_path(dest, used)
+            self.assertEqual(p1, dest)
+            self.assertIn(dest.as_posix(), used)
 
-        # Second call with same name produces dup suffix
-        p2 = ensure_unique_destination_path(dest, used)
-        self.assertEqual(p2.name, "0000005__my_image__dup001.png")
+            # Second call with same name produces dup suffix
+            p2 = ensure_unique_destination_path(dest, used)
+            self.assertEqual(p2.name, "0000005__my_image__dup001.png")
 
     def test_build_materialization_plan(self):
         with tempfile.TemporaryDirectory() as td:
