@@ -21,6 +21,8 @@ def l2_normalize_matrix(matrix: Union[np.ndarray, list], eps: float = 1e-12) -> 
     arr = np.asarray(matrix, dtype=np.float32)
     if arr.ndim != 2:
         raise ValueError(f"Expected 2D matrix for normalization, got shape {arr.shape}.")
+    if not np.isfinite(arr).all() or eps <= 0 or not np.isfinite(eps):
+        raise ValueError("Normalization requires finite values and a positive finite epsilon.")
     norms = np.linalg.norm(arr, axis=1, keepdims=True)
     norms = np.maximum(norms, eps)
     return arr / norms

@@ -5,6 +5,8 @@ End-to-end pipeline orchestrator chaining stages 01 through 06.
 from pathlib import Path
 from typing import Any, Dict, Union
 
+from ..config import validate_parameters
+from ..utils.paths import checked_path
 from .audit import run_dataset_audit
 from .cluster import run_clustering
 from .crop import run_crop_preparation
@@ -45,8 +47,9 @@ def run_full_pipeline(
     Returns:
         Dict mapping stage names to their respective result dictionaries.
     """
-    input_dir = Path(input_dir).expanduser().resolve()
-    project_dir = Path(project_dir).expanduser().resolve()
+    validate_parameters(**locals())
+    input_dir = checked_path(input_dir)
+    project_dir = checked_path(project_dir)
 
     results: Dict[str, Any] = {}
 

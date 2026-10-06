@@ -5,7 +5,6 @@ Workflow orchestrator for Stage 3: CCIP embedding extraction and L2 normalizatio
 import json
 import platform
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
@@ -13,11 +12,12 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
+from ..config import validate_parameters
 from ..embeddings.extraction import extract_all_embeddings, warmup_ccip_model
 from ..embeddings.normalization import l2_normalize_matrix
 from ..exceptions import ConfigurationError, EmbeddingError, InvalidImageError
-from ..utils.paths import normalize_path_string
-from ..utils.runs import find_latest_run
+from ..utils.paths import checked_path, normalize_path_string
+from ..utils.runs import create_run_directory, find_latest_run
 from ..utils.serialization import safe_bool_series
 from ..utils.time import now_iso
 from ..utils.validation import validate_image_file
@@ -37,18 +37,22 @@ def run_embedding_extraction(
     """
     Execute complete Stage 3 CCIP embedding extraction workflow.
     """
-    project_dir = Path(project_dir).expanduser().resolve()
+    validate_parameters(**locals())
+    project_dir = checked_path(project_dir)
 
     if previous_run_dir is None:
         previous_run_dir = find_latest_run(
             project_dir=project_dir,
             stage_prefix="02_crop_preparation_*",
-            required_relative_paths=[Path("tables") / "crop_manifest_with_review_flags.csv"],
+            required_relative_paths=[
+                Path("reports") / "summary.json",
+                Path("tables") / "crop_manifest_with_review_flags.csv",
+            ],
         )
     else:
-        previous_run_dir = Path(previous_run_dir).expanduser().resolve()
+        previous_run_dir = checked_path(previous_run_dir)
 
-    crop_manifest_path = previous_run_dir / "tables" / "crop_manifest_with_review_flags.csv"
+    crop_manifest_path = checked_path(previous_run_dir / "tables" / "crop_manifest_with_review_flags.csv")
     if not crop_manifest_path.exists():
         raise ConfigurationError(f"Required crop manifest not found: {crop_manifest_path}")
 
@@ -56,8 +60,8 @@ def run_embedding_extraction(
     if "crop_path" not in crop_df.columns or "status" not in crop_df.columns:
         raise ConfigurationError("Crop manifest missing required columns 'crop_path' or 'status'.")
 
-    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_dir = project_dir / "runs" / f"03_ccip_embeddings_{run_id}"
+    run_dir = create_run_directory(project_dir, "03_ccip_embeddings")
+    run_id = run_dir.name.removeprefix("03_ccip_embeddings_")
     reports_dir = run_dir / "reports"
     tables_dir = run_dir / "tables"
     arrays_dir = run_dir / "arrays"
@@ -66,6 +70,8 @@ def run_embedding_extraction(
     for d in [run_dir, reports_dir, tables_dir, arrays_dir, logs_dir]:
         d.mkdir(parents=True, exist_ok=True)
 
+    if crop_df["crop_path"].dropna().duplicated().any():
+        raise ConfigurationError("Crop paths must be unique for an unambiguous embedding manifest.")
     embedding_input_df = crop_df.copy()
     embedding_input_df["crop_path"] = embedding_input_df["crop_path"].map(normalize_path_string)
 
@@ -160,6 +166,9 @@ def run_embedding_extraction(
 
     ok_paths = [r["path"] for r in ok_records]
     raw_embeddings = np.vstack([r["feature"] for r in ok_records]).astype(np.float32)
+
+    if not np.isfinite(raw_embeddings).all() or np.any(np.linalg.norm(raw_embeddings, axis=1) == 0):
+        raise EmbeddingError("CCIP produced non-finite or zero feature vectors.")
 
     if normalize_embeddings:
         normalized_embeddings = l2_normalize_matrix(raw_embeddings)

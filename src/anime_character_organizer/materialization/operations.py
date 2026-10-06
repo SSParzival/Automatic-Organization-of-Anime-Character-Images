@@ -58,9 +58,9 @@ def materialize_one_file(
             raise ValueError("Source and destination must differ.")
         if not source.is_file():
             raise FileNotFoundError(f"Source is not a regular file: {source}")
-        if destination.exists() and not destination.is_symlink() and os.path.samefile(source, destination):
+        if not destination.is_symlink() and destination.exists() and os.path.samefile(source, destination):
             raise ValueError("Destination aliases the source inode.")
-        if destination.exists() or destination.is_symlink():
+        if destination.is_symlink() or destination.exists():
             if on_existing == "error":
                 raise FileExistsError(f"Destination already exists: {destination}")
             if on_existing == "skip":

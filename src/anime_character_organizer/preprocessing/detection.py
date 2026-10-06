@@ -2,6 +2,7 @@
 Anime character head and person detection wrappers and selection heuristics.
 """
 
+import warnings
 from typing import Any, Dict, List, Optional, Tuple
 
 from PIL import Image
@@ -57,7 +58,12 @@ def detect_heads_safe(
             for det in raw_dets
             if box_area(clamp_box(det[0], width, height)) > 0
         ]
-    except Exception:
+    except Exception as exc:
+        warnings.warn(
+            f"Detector failed ({type(exc).__name__}): {exc}. Crop fallback requires review.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         return []
 
 
@@ -77,5 +83,10 @@ def detect_persons_safe(
             for det in raw_dets
             if box_area(clamp_box(det[0], width, height)) > 0
         ]
-    except Exception:
+    except Exception as exc:
+        warnings.warn(
+            f"Detector failed ({type(exc).__name__}): {exc}. Crop fallback requires review.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         return []

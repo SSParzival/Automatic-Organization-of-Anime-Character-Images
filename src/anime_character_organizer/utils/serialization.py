@@ -76,10 +76,10 @@ def dataframe_to_json_records(df: pd.DataFrame, max_rows: Optional[int] = None) 
 
 
 def safe_read_csv(path: Any, **kwargs: Any) -> pd.DataFrame:
-    """Read CSV safely, returning an empty DataFrame if the file is missing, empty, or unparseable."""
-    from pathlib import Path
+    """Read optional CSVs; missing/empty files yield an empty frame, malformed files raise."""
+    from .paths import checked_path
 
-    p = Path(path)
+    p = checked_path(path)
     if not p.exists() or p.stat().st_size == 0:
         return pd.DataFrame()
     try:

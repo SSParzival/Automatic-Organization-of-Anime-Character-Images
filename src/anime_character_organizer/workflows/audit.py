@@ -6,14 +6,15 @@ import json
 import os
 import platform
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Set, Union
 
-from ..config import DEFAULT_VALID_EXTENSIONS
+from ..config import DEFAULT_VALID_EXTENSIONS, validate_parameters
 from ..data.audit import audit_images, scan_candidate_files
 from ..data.duplicates import find_exact_duplicates, find_perceptual_duplicates
 from ..exceptions import ConfigurationError
+from ..utils.paths import checked_path
+from ..utils.runs import create_run_directory
 from ..utils.time import now_iso
 
 
@@ -31,8 +32,12 @@ def run_dataset_audit(
     Returns:
         Dict containing run_dir, tables, summary, and path mappings.
     """
-    input_dir = Path(input_dir).expanduser().resolve()
-    project_dir = Path(project_dir).expanduser().resolve()
+    input_dir = checked_path(input_dir)
+    validate_parameters(**locals())
+    project_dir = checked_path(project_dir)
+
+    if project_dir.is_relative_to(input_dir):
+        raise ConfigurationError("project_dir must be outside the input directory to preserve the dataset.")
 
     if not input_dir.exists():
         raise ConfigurationError(f"Input directory does not exist: {input_dir}")
@@ -45,8 +50,8 @@ def run_dataset_audit(
     if max_workers is None:
         max_workers = max(1, min(16, (os.cpu_count() or 4)))
 
-    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_dir = project_dir / "runs" / f"01_dataset_audit_{run_id}"
+    run_dir = create_run_directory(project_dir, "01_dataset_audit")
+    run_id = run_dir.name.removeprefix("01_dataset_audit_")
     reports_dir = run_dir / "reports"
     tables_dir = run_dir / "tables"
     logs_dir = run_dir / "logs"

@@ -5,6 +5,7 @@ Unit tests for preprocessing, geometry, detection selection, and cropping.
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import pandas as pd
 from PIL import Image
@@ -54,7 +55,9 @@ class TestPreprocessing(unittest.TestCase):
         cid = make_crop_id(42, "path/to/my_image.png")
         self.assertEqual(cid, "img_0000042_my_image")
 
-    def test_cropping_and_saving(self):
+    @patch("anime_character_organizer.preprocessing.cropping.detect_heads_safe", return_value=[])
+    @patch("anime_character_organizer.preprocessing.cropping.detect_persons_safe", return_value=[])
+    def test_cropping_and_saving(self, _persons, _heads):
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
             crops_dir = base / "crops"

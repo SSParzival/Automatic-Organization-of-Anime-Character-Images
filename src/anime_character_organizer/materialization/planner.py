@@ -12,7 +12,7 @@ from ..utils.naming import sanitize_filename_component, sanitize_folder_name
 from ..utils.paths import checked_path
 
 
-def make_destination_filename(row: Dict[str, Any], source_path: Union[str, Path]) -> str:
+def make_destination_filename(row: Dict[str, Any], source_path: Union[str, Path], stem_max_length: int = 110) -> str:
     """Format safe destination filename incorporating embedding row prefix and source stem."""
     source_path = Path(source_path)
     suffix = source_path.suffix
@@ -20,18 +20,20 @@ def make_destination_filename(row: Dict[str, Any], source_path: Union[str, Path]
 
     embedding_row = row.get("embedding_row", None)
     try:
+        if embedding_row is None:
+            raise ValueError("No embedding row available")
         prefix = f"{int(embedding_row):07d}"
     except Exception:
         prefix = stable_short_hash(source_path.as_posix(), length=10)
 
-    safe_stem = sanitize_filename_component(stem, fallback="image", max_length=110)
+    safe_stem = sanitize_filename_component(stem, fallback="image", max_length=stem_max_length)
     return f"{prefix}__{safe_stem}{suffix}"
 
 
 def ensure_unique_destination_path(destination_path: Path, used_paths: Set[str]) -> Path:
     """Ensure destination path does not collide with existing files or previously planned files."""
     dest_key = destination_path.as_posix()
-    if dest_key not in used_paths and not destination_path.exists() and not destination_path.is_symlink():
+    if dest_key not in used_paths and not destination_path.is_symlink() and not destination_path.exists():
         used_paths.add(dest_key)
         return destination_path
 
@@ -43,7 +45,7 @@ def ensure_unique_destination_path(destination_path: Path, used_paths: Set[str])
     while True:
         candidate = parent / f"{stem}__dup{counter:03d}{suffix}"
         candidate_key = candidate.as_posix()
-        if candidate_key not in used_paths and not candidate.exists() and not candidate.is_symlink():
+        if candidate_key not in used_paths and not candidate.is_symlink() and not candidate.exists():
             used_paths.add(candidate_key)
             return candidate
         counter += 1
@@ -54,6 +56,7 @@ def build_materialization_plan(
     output_dir: Path,
     source_column: str = "source_path",
     folder_column: str = "proposed_folder",
+    stem_max_length: int = 110,
 ) -> pd.DataFrame:
     """
     Build complete materialization plan dataframe specifying destination path for each row.
@@ -65,7 +68,7 @@ def build_materialization_plan(
     for _, row in assignment_df.iterrows():
         source_path = checked_path(row[source_column])
         folder_name = sanitize_folder_name(row[folder_column], fallback="_needs_review")
-        dest_filename = make_destination_filename(row, source_path)
+        dest_filename = make_destination_filename(row, source_path, stem_max_length)
         dest_path = checked_path(output_dir / folder_name / dest_filename, allow_leaf_symlink=True)
         unique_dest_path = ensure_unique_destination_path(dest_path, used_paths)
 

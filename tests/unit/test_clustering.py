@@ -43,7 +43,7 @@ class TestClustering(unittest.TestCase):
         self.assertIn(backend, ["hdbscan", "sklearn"])
         # Should detect at least 2 distinct clusters
         non_noise_labels = set(labels) - {-1}
-        self.assertGreaterEqual(len(non_noise_labels), 1)
+        self.assertEqual(len(non_noise_labels), 2)
 
     def test_centroids_and_distances(self):
         labels = np.array([0] * 20 + [1] * 20)

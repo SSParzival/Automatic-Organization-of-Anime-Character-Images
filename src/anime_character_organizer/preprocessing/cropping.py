@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import pandas as pd
 from PIL import Image, ImageOps
 
+from ..utils.paths import checked_path
 from ..utils.time import now_iso
 from .detection import choose_best_detection, detect_heads_safe, detect_persons_safe, detection_to_dict
 from .geometry import clamp_box, expand_box
@@ -28,7 +29,7 @@ def save_rgb_image(
     image: Image.Image, output_path: Union[str, Path], crop_format: str = "JPEG", quality: int = 95
 ) -> None:
     """Save PIL image as RGB JPEG or PNG with optimization."""
-    output_path = Path(output_path)
+    output_path = checked_path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     if crop_format.upper() == "JPEG":
@@ -59,11 +60,11 @@ def process_image_for_crop(
     2. Best person crop (with person_padding)
     3. Full image fallback (if no detection or detection too small)
     """
-    path = Path(row["path"])
+    path = checked_path(row["path"])
     image_index = int(row["image_index"])
     crop_id = make_crop_id(image_index, path)
     crop_extension = ".jpg" if crop_format.upper() == "JPEG" else ".png"
-    crop_path = crops_dir / f"{crop_id}{crop_extension}"
+    crop_path = checked_path(crops_dir / f"{crop_id}{crop_extension}")
 
     record: Dict[str, Any] = {
         "image_index": image_index,
@@ -94,8 +95,8 @@ def process_image_for_crop(
     }
 
     try:
-        with Image.open(path) as img:
-            img = ImageOps.exif_transpose(img).convert("RGB")
+        with Image.open(path) as source_image:
+            img = ImageOps.exif_transpose(source_image).convert("RGB")
             width, height = img.size
             record["source_width"] = int(width)
             record["source_height"] = int(height)

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import List, Optional, Union
 
 from ..exceptions import RunNotFoundError
+from .paths import checked_path
 
 
 def find_latest_run(
@@ -27,9 +28,15 @@ def find_latest_run(
     Raises:
         RunNotFoundError: If no matching and valid run directory is found.
     """
-    runs_dir = Path(project_dir).expanduser().resolve() / "runs"
+    if "/" in stage_prefix or "\\" in stage_prefix or stage_prefix == "sandbox":
+        raise ValueError("Run prefix must not traverse directories.")
+    for relative in required_relative_paths or []:
+        rel = Path(relative)
+        if rel.is_absolute() or ".." in rel.parts or "sandbox" in rel.parts:
+            raise ValueError("Required artifact paths must remain inside a run.")
+    runs_dir = checked_path(checked_path(project_dir) / "runs")
     candidates = sorted(
-        [p for p in runs_dir.glob(stage_prefix) if p.is_dir()],
+        [p for p in runs_dir.glob(stage_prefix) if p.name != "sandbox" and not p.is_symlink() and p.is_dir()],
         key=lambda p: p.name,
     )
 
@@ -40,7 +47,7 @@ def find_latest_run(
 
     valid_candidates = []
     for candidate in candidates:
-        if all((candidate / rel_path).exists() for rel_path in required_relative_paths):
+        if all(checked_path(candidate / rel_path).exists() for rel_path in required_relative_paths):
             valid_candidates.append(candidate)
 
     if not valid_candidates:
@@ -50,3 +57,25 @@ def find_latest_run(
         )
 
     return valid_candidates[-1]
+
+
+def create_run_directory(project_dir: Union[str, Path], stage: str) -> Path:
+    """Reserve a unique run atomically; never reuse a previous run's artifacts."""
+    from datetime import datetime
+    from uuid import uuid4
+
+    from .paths import checked_path
+
+    if not stage or "/" in stage or "\\" in stage or stage == "sandbox":
+        raise ValueError("Stage must be a single non-protected directory prefix.")
+    runs = checked_path(project_dir) / "runs"
+    checked_path(runs).mkdir(parents=True, exist_ok=True)
+    for _ in range(10):
+        run_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f") + "_" + uuid4().hex[:8]
+        run_dir = runs / f"{stage}_{run_id}"
+        try:
+            run_dir.mkdir(exist_ok=False)
+            return run_dir
+        except FileExistsError:
+            continue
+    raise FileExistsError("Unable to allocate a unique pipeline run.")

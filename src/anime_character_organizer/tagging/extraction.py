@@ -18,6 +18,7 @@ def extract_pixai_tags(
     general, character, ips, ips_mapping = get_pixai_tags(
         str(image_path),
         model_name=model_name,
+        thresholds={"character": 0.0},
         fmt=("general", "character", "ips", "ips_mapping"),
     )
 
@@ -45,6 +46,7 @@ def extract_wd14_tags(
     rating, general, character = get_wd14_tags(
         str(image_path),
         model_name=model_name,
+        character_threshold=0.0,
         fmt=("rating", "general", "character"),
     )
 

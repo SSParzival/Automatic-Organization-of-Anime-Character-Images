@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from ..utils.paths import checked_path
+
 
 def plot_cluster_size_distribution(
     cluster_summary_df: pd.DataFrame,
@@ -32,7 +34,7 @@ def plot_cluster_size_distribution(
 
     fig.tight_layout()
     if output_path is not None:
-        out_p = Path(output_path)
+        out_p = checked_path(output_path)
         out_p.parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(out_p, dpi=dpi)
 
@@ -65,7 +67,7 @@ def plot_probability_and_outlier_distributions(
 
     fig.tight_layout()
     if output_path is not None:
-        out_p = Path(output_path)
+        out_p = checked_path(output_path)
         out_p.parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(out_p, dpi=dpi)
 

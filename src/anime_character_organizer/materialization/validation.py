@@ -2,10 +2,11 @@
 Validation of materialized output directory files against source files.
 """
 
-from pathlib import Path
 from typing import Any, Dict, List
 
 import pandas as pd
+
+from ..utils.paths import checked_path
 
 
 def validate_materialized_files(materialization_result_df: pd.DataFrame) -> pd.DataFrame:
@@ -16,8 +17,11 @@ def validate_materialized_files(materialization_result_df: pd.DataFrame) -> pd.D
     validation_rows: List[Dict[str, Any]] = []
 
     for _, row in materialization_result_df.iterrows():
-        source_path = Path(row["source_path"])
-        dest_path = Path(row["destination_path"])
+        source_path = checked_path(row["source_path"])
+        dest_path = checked_path(row["destination_path"], allow_leaf_symlink=True)
+        if dest_path.is_symlink():
+            target = dest_path.readlink()
+            checked_path(target if target.is_absolute() else dest_path.parent / target)
         status = row.get("status")
 
         dest_exists = dest_path.exists() or dest_path.is_symlink()

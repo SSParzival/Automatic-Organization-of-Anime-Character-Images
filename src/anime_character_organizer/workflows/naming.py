@@ -5,7 +5,6 @@ Workflow orchestrator for Stage 6: Semantic cluster naming with anime image tagg
 import json
 import platform
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
@@ -13,16 +12,18 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from ..exceptions import ConfigurationError, InvalidImageError
+from ..config import validate_parameters
+from ..exceptions import ConfigurationError, InvalidImageError, MaterializationError, TaggingError
 from ..materialization.operations import materialize_one_file
+from ..materialization.planner import build_materialization_plan
+from ..materialization.validation import validate_materialized_files
 from ..tagging.aggregation import aggregate_cluster_tags
 from ..tagging.extraction import extract_tags_with_fallback
 from ..tagging.renaming import build_folder_rename_plan
 from ..tagging.sampling import select_cluster_samples
-from ..utils.hashing import stable_short_hash
 from ..utils.naming import sanitize_filename_component
-from ..utils.paths import normalize_path_string
-from ..utils.runs import find_latest_run
+from ..utils.paths import checked_path, normalize_path_string
+from ..utils.runs import create_run_directory, find_latest_run
 from ..utils.serialization import safe_bool, safe_json_dumps
 from ..utils.time import now_iso
 from ..utils.validation import validate_image_file
@@ -56,23 +57,26 @@ def run_cluster_naming(
     """
     Execute complete Stage 6 anime tagging, cluster name suggestion, and optional named materialization workflow.
     """
-    project_dir = Path(project_dir).expanduser().resolve()
+    validate_parameters(**locals())
+    project_dir = checked_path(project_dir)
+    named_output_dir = checked_path(named_output_dir) if named_output_dir is not None else None
 
     if previous_clustering_run_dir is None:
         previous_clustering_run_dir = find_latest_run(
             project_dir=project_dir,
             stage_prefix="04_hdbscan_clustering_*",
             required_relative_paths=[
+                Path("reports") / "summary.json",
                 Path("tables") / "cluster_manifest.csv",
                 Path("tables") / "cluster_summary.csv",
                 Path("tables") / "folder_assignment_manifest.csv",
             ],
         )
     else:
-        previous_clustering_run_dir = Path(previous_clustering_run_dir).expanduser().resolve()
+        previous_clustering_run_dir = checked_path(previous_clustering_run_dir)
 
-    cluster_manifest_path = previous_clustering_run_dir / "tables" / "cluster_manifest.csv"
-    folder_assignment_path = previous_clustering_run_dir / "tables" / "folder_assignment_manifest.csv"
+    cluster_manifest_path = checked_path(previous_clustering_run_dir / "tables" / "cluster_manifest.csv")
+    folder_assignment_path = checked_path(previous_clustering_run_dir / "tables" / "folder_assignment_manifest.csv")
 
     if not cluster_manifest_path.exists() or not folder_assignment_path.exists():
         raise ConfigurationError("Clustering run missing required tables.")
@@ -80,8 +84,8 @@ def run_cluster_naming(
     cluster_manifest_df = pd.read_csv(cluster_manifest_path)
     folder_assignment_df = pd.read_csv(folder_assignment_path)
 
-    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_dir = project_dir / "runs" / f"06_cluster_naming_{run_id}"
+    run_dir = create_run_directory(project_dir, "06_cluster_naming")
+    run_id = run_dir.name.removeprefix("06_cluster_naming_")
     reports_dir = run_dir / "reports"
     tables_dir = run_dir / "tables"
     logs_dir = run_dir / "logs"
@@ -95,7 +99,11 @@ def run_cluster_naming(
         if named_output_dir is None:
             named_output_dir = project_dir / "organized_output" / f"anime_named_{run_id}"
         else:
-            named_output_dir = Path(named_output_dir).expanduser().resolve()
+            named_output_dir = checked_path(named_output_dir)
+        named_output_dir = checked_path(named_output_dir)
+        if named_output_dir.exists() and any(named_output_dir.iterdir()):
+            raise ConfigurationError("Output directory must be new or empty to protect existing artifacts.")
+
         named_output_dir.mkdir(parents=True, exist_ok=True)
 
     cluster_work_df = cluster_manifest_df.copy()
@@ -131,6 +139,9 @@ def run_cluster_naming(
         selected = select_cluster_samples(group, max_images=max_images_per_cluster_to_tag)
         selected["selected_for_tagging"] = True
         sample_rows.append(selected)
+
+    if not sample_rows:
+        raise InvalidImageError("No existing crop files available in eligible clusters. Run crop preparation again.")
 
     tagging_input_df = pd.concat(sample_rows, axis=0).reset_index(drop=True)
     tagging_input_df.insert(0, "tagging_index", np.arange(len(tagging_input_df), dtype=int))
@@ -247,6 +258,9 @@ def run_cluster_naming(
     tagging_manifest_path = tables_dir / "tagging_manifest.csv"
     tagging_manifest_df.to_csv(tagging_manifest_path, index=False)
 
+    if tagging_manifest_df["tagging_status"].ne("ok").all():
+        raise TaggingError(f"All tagger calls failed; inspect {tagging_manifest_path}.")
+
     # Aggregate character tags by cluster
     cluster_name_suggestions_df = aggregate_cluster_tags(
         tagging_manifest_df=tagging_manifest_df,
@@ -330,30 +344,17 @@ def run_cluster_naming(
     # Named materialization if requested
     named_materialization_df = pd.DataFrame()
     if create_named_output and not folder_rename_plan_df.empty:
-        used_destinations = set()
+        if named_output_dir is None:
+            raise ConfigurationError("Named output directory was not initialized.")
+        named_plan = build_materialization_plan(
+            folder_rename_plan_df, named_output_dir, folder_column="named_folder", stem_max_length=140
+        )
+        named_plan.to_csv(tables_dir / "named_materialization_plan.csv", index=False)
         named_plan_rows = []
-        for _, row in folder_rename_plan_df.iterrows():
+        for _, row in named_plan.iterrows():
             src_p = Path(row["source_path"])
             folder_n = row["named_folder"]
-            try:
-                row_idx = int(row["embedding_row"])
-                pfx = f"{row_idx:07d}"
-            except Exception:
-                pfx = stable_short_hash(src_p.as_posix(), length=10)
-
-            base_fn = f"{pfx}__{sanitize_filename_component(src_p.stem, fallback='image')}{src_p.suffix}"
-            dest_p = named_output_dir / folder_n / base_fn
-            dest_key = dest_p.as_posix()
-            cnt = 1
-            while dest_key in used_destinations or dest_p.exists():
-                base_fn = (
-                    f"{pfx}__{sanitize_filename_component(src_p.stem, fallback='image')}__dup{cnt:03d}{src_p.suffix}"
-                )
-                dest_p = named_output_dir / folder_n / base_fn
-                dest_key = dest_p.as_posix()
-                cnt += 1
-            used_destinations.add(dest_key)
-
+            dest_p = Path(row["destination_path"])
             res = materialize_one_file(
                 source_path=src_p,
                 destination_path=dest_p,
@@ -380,6 +381,14 @@ def run_cluster_naming(
 
         named_materialization_df = pd.DataFrame(named_plan_rows)
         named_materialization_df.to_csv(tables_dir / "named_materialization_result.csv", index=False)
+        named_validation = validate_materialized_files(
+            named_materialization_df.rename(columns={"named_destination_path": "destination_path"})
+        )
+        named_validation.to_csv(tables_dir / "named_materialization_validation.csv", index=False)
+        if not named_validation["is_valid"].all():
+            raise MaterializationError(
+                f"Named output is incomplete; inspect {tables_dir / 'named_materialization_validation.csv'}."
+            )
 
     summary = {
         "run_id": run_id,

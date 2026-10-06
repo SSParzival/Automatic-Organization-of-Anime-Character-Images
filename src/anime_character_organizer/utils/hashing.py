@@ -6,10 +6,12 @@ import hashlib
 from pathlib import Path
 from typing import Any, Union
 
+from .paths import checked_path
+
 
 def sha256_file(path: Union[str, Path], chunk_size: int = 1_048_576) -> str:
     """Compute the SHA-256 hex digest of a file in streaming chunks."""
-    path = Path(path)
+    path = checked_path(path)
     hasher = hashlib.sha256()
     with path.open("rb") as f:
         while True:

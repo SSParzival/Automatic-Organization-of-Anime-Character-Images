@@ -7,6 +7,8 @@ from typing import Optional, Tuple, Union
 
 from PIL import Image, ImageOps
 
+from .paths import checked_path
+
 Image.MAX_IMAGE_PIXELS = 300_000_000
 
 
@@ -18,7 +20,7 @@ def validate_image_file(path: Union[str, Path]) -> Tuple[bool, Optional[str], Op
     Returns:
         (is_valid, error_type, error_message)
     """
-    path = Path(path)
+    path = checked_path(path)
     if not path.exists():
         return False, "FileNotFoundError", "Image file does not exist."
     if not path.is_file():
@@ -31,8 +33,8 @@ def validate_image_file(path: Union[str, Path]) -> Tuple[bool, Optional[str], Op
         with Image.open(path) as img:
             img.verify()
 
-        with Image.open(path) as img:
-            img = ImageOps.exif_transpose(img).convert("RGB")
+        with Image.open(path) as source_image:
+            img = ImageOps.exif_transpose(source_image).convert("RGB")
             width, height = img.size
 
         if width <= 0 or height <= 0:

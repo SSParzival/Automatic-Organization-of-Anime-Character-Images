@@ -5,10 +5,10 @@ Workflow orchestrator for Stage 4: HDBSCAN clustering and review diagnostics.
 import json
 import platform
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -20,8 +20,10 @@ from ..clustering.diagnostics import (
     flag_cluster_review_items,
     sample_representative_and_boundary_rows,
 )
+from ..config import validate_parameters
 from ..exceptions import ConfigurationError
-from ..utils.runs import find_latest_run
+from ..utils.paths import checked_path
+from ..utils.runs import create_run_directory, find_latest_run
 from ..utils.time import now_iso
 from ..visualization.contact_sheet import create_contact_sheet
 from ..visualization.plots import plot_cluster_size_distribution, plot_probability_and_outlier_distributions
@@ -48,23 +50,24 @@ def run_clustering(
     """
     Execute complete Stage 4 HDBSCAN clustering workflow.
     """
-    project_dir = Path(project_dir).expanduser().resolve()
-    np.random.seed(random_seed)
+    validate_parameters(**locals())
+    project_dir = checked_path(project_dir)
 
     if previous_run_dir is None:
         previous_run_dir = find_latest_run(
             project_dir=project_dir,
             stage_prefix="03_ccip_embeddings_*",
             required_relative_paths=[
+                Path("reports") / "summary.json",
                 Path("arrays") / embedding_file_name,
                 Path("tables") / manifest_file_name,
             ],
         )
     else:
-        previous_run_dir = Path(previous_run_dir).expanduser().resolve()
+        previous_run_dir = checked_path(previous_run_dir)
 
-    embeddings_path = previous_run_dir / "arrays" / embedding_file_name
-    manifest_path = previous_run_dir / "tables" / manifest_file_name
+    embeddings_path = checked_path(previous_run_dir / "arrays" / embedding_file_name)
+    manifest_path = checked_path(previous_run_dir / "tables" / manifest_file_name)
 
     if not embeddings_path.exists():
         raise ConfigurationError(f"Embedding matrix not found: {embeddings_path}")
@@ -72,10 +75,25 @@ def run_clustering(
         raise ConfigurationError(f"Embedding manifest not found: {manifest_path}")
 
     embedding_manifest_df = pd.read_csv(manifest_path)
-    embeddings = np.load(embeddings_path).astype(np.float32)
+    embeddings = np.load(checked_path(embeddings_path), allow_pickle=False).astype(np.float32)
+    required = {"embedding_row", "source_path", "crop_path", "relative_path"}
+    if not required.issubset(embedding_manifest_df.columns):
+        raise ConfigurationError(
+            f"Embedding manifest missing columns: {sorted(required - set(embedding_manifest_df.columns))}"
+        )
+    if embeddings.ndim != 2 or not all(embeddings.shape) or not np.isfinite(embeddings).all():
+        raise ConfigurationError("Embeddings must be a nonempty finite 2D matrix.")
+    rows = pd.to_numeric(embedding_manifest_df["embedding_row"], errors="coerce")
+    if len(rows) != len(embeddings) or rows.isna().any() or sorted(rows.tolist()) != list(range(len(embeddings))):
+        raise ConfigurationError("embedding_row must map each matrix row exactly once.")
+    embedding_manifest_df = (
+        embedding_manifest_df.assign(embedding_row=rows).sort_values("embedding_row").reset_index(drop=True)
+    )
+    if len(embeddings) < 2:
+        raise ConfigurationError("At least two embeddings are needed for clustering.")
 
-    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_dir = project_dir / "runs" / f"04_hdbscan_clustering_{run_id}"
+    run_dir = create_run_directory(project_dir, "04_hdbscan_clustering")
+    run_id = run_dir.name.removeprefix("04_hdbscan_clustering_")
     reports_dir = run_dir / "reports"
     tables_dir = run_dir / "tables"
     arrays_dir = run_dir / "arrays"
@@ -106,6 +124,10 @@ def run_clustering(
     )
 
     cluster_manifest_df = embedding_manifest_df.copy()
+    cluster_manifest_df["hdbscan_label"] = labels.copy()
+    cluster_manifest_df["hdbscan_probability"] = probabilities.copy()
+    cluster_manifest_df["hdbscan_outlier_score"] = outlier_scores.copy()
+    cluster_manifest_df["reassigned_from_noise"] = False
     cluster_manifest_df["cluster_label"] = labels
     cluster_manifest_df["cluster_probability"] = probabilities
     cluster_manifest_df["outlier_score"] = outlier_scores
@@ -143,6 +165,7 @@ def run_clustering(
                     probabilities[n_i] = prob_val
                     outlier_scores[n_i] = best_dist
                     distance_to_centroid[n_i] = best_dist
+                    cluster_manifest_df.loc[n_i, "reassigned_from_noise"] = True
                     cluster_manifest_df.loc[n_i, "cluster_label"] = assigned_lbl
                     cluster_manifest_df.loc[n_i, "cluster_probability"] = prob_val
                     cluster_manifest_df.loc[n_i, "outlier_score"] = best_dist
@@ -161,6 +184,12 @@ def run_clustering(
                     distance_to_centroid[idx] = final_distances
                     cluster_manifest_df.loc[idx, "distance_to_centroid"] = final_distances
 
+    cluster_manifest_df, high_outlier_thresh = flag_cluster_review_items(
+        cluster_manifest_df, low_probability_threshold, high_outlier_quantile
+    )
+    reassigned_mask = cluster_manifest_df["reassigned_from_noise"]
+    cluster_manifest_df.loc[reassigned_mask, "cluster_review_reason"] = "reassigned_from_noise"
+    cluster_manifest_df.loc[reassigned_mask, "requires_manual_review"] = True
     cluster_summary_df = calculate_cluster_summary(cluster_manifest_df)
     folder_assignment_df = build_folder_assignment_manifest(
         cluster_manifest_df,
@@ -217,14 +246,16 @@ def run_clustering(
 
     # Figures
     cluster_size_plot_path = figures_dir / "cluster_size_distribution.png"
-    plot_cluster_size_distribution(cluster_summary_df, output_path=cluster_size_plot_path)
+    plt.close(plot_cluster_size_distribution(cluster_summary_df, output_path=cluster_size_plot_path))
 
     probability_outlier_plot_path = figures_dir / "probability_outlier_distribution.png"
-    plot_probability_and_outlier_distributions(
-        cluster_manifest_df,
-        low_probability_threshold=low_probability_threshold,
-        high_outlier_threshold=high_outlier_thresh,
-        output_path=probability_outlier_plot_path,
+    plt.close(
+        plot_probability_and_outlier_distributions(
+            cluster_manifest_df,
+            low_probability_threshold=low_probability_threshold,
+            high_outlier_threshold=high_outlier_thresh,
+            output_path=probability_outlier_plot_path,
+        )
     )
 
     # Cluster contact sheets

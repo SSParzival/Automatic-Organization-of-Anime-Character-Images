@@ -7,7 +7,6 @@ import os
 import platform
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -15,11 +14,12 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
+from ..config import validate_parameters
 from ..exceptions import ConfigurationError
 from ..preprocessing.cropping import add_review_flags, process_image_for_crop
-from ..utils.paths import normalize_path_string
-from ..utils.runs import find_latest_run
-from ..utils.serialization import safe_read_csv
+from ..utils.paths import checked_path, normalize_path_string
+from ..utils.runs import create_run_directory, find_latest_run
+from ..utils.serialization import safe_bool_series, safe_read_csv
 from ..utils.time import now_iso
 from ..visualization.contact_sheet import create_contact_sheet
 
@@ -44,30 +44,31 @@ def run_crop_preparation(
     """
     Execute complete Stage 2 crop preparation workflow.
     """
-    project_dir = Path(project_dir).expanduser().resolve()
+    validate_parameters(**locals())
+    project_dir = checked_path(project_dir)
 
     if previous_run_dir is None:
         previous_run_dir = find_latest_run(
             project_dir=project_dir,
             stage_prefix="01_dataset_audit_*",
-            required_relative_paths=[Path("tables") / "valid_images.csv"],
+            required_relative_paths=[Path("reports") / "summary.json", Path("tables") / "valid_images.csv"],
         )
     else:
-        previous_run_dir = Path(previous_run_dir).expanduser().resolve()
+        previous_run_dir = checked_path(previous_run_dir)
 
-    valid_images_path = previous_run_dir / "tables" / "valid_images.csv"
+    valid_images_path = checked_path(previous_run_dir / "tables" / "valid_images.csv")
     if not valid_images_path.exists():
         raise ConfigurationError(f"Required valid images file missing: {valid_images_path}")
 
     valid_df = pd.read_csv(valid_images_path)
-    exact_duplicates_path = previous_run_dir / "tables" / "exact_duplicate_groups.csv"
+    exact_duplicates_path = checked_path(previous_run_dir / "tables" / "exact_duplicate_groups.csv")
     exact_duplicates_df = safe_read_csv(exact_duplicates_path)
 
-    perceptual_groups_path = previous_run_dir / "tables" / "perceptual_duplicate_groups.csv"
+    perceptual_groups_path = checked_path(previous_run_dir / "tables" / "perceptual_duplicate_groups.csv")
     perceptual_groups_df = safe_read_csv(perceptual_groups_path)
 
-    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_dir = project_dir / "runs" / f"02_crop_preparation_{run_id}"
+    run_dir = create_run_directory(project_dir, "02_crop_preparation")
+    run_id = run_dir.name.removeprefix("02_crop_preparation_")
     reports_dir = run_dir / "reports"
     tables_dir = run_dir / "tables"
     logs_dir = run_dir / "logs"
@@ -84,7 +85,7 @@ def run_crop_preparation(
     if not exact_duplicates_df.empty and "is_representative" in exact_duplicates_df.columns:
         exact_df = exact_duplicates_df.copy()
         exact_df["path"] = exact_df["path"].map(normalize_path_string)
-        non_rep_exact = exact_df[~exact_df["is_representative"].astype(bool)]
+        non_rep_exact = exact_df[~safe_bool_series(exact_df["is_representative"])]
         excluded_exact_paths = set(non_rep_exact["path"].tolist())
 
     excluded_perceptual_paths = set()
@@ -95,7 +96,7 @@ def run_crop_preparation(
     ):
         perceptual_df = perceptual_groups_df.copy()
         perceptual_df["path"] = perceptual_df["path"].map(normalize_path_string)
-        non_rep_perceptual = perceptual_df[~perceptual_df["is_representative"].astype(bool)]
+        non_rep_perceptual = perceptual_df[~safe_bool_series(perceptual_df["is_representative"])]
         excluded_perceptual_paths = set(non_rep_perceptual["path"].tolist())
 
     working_df["excluded_exact_duplicate"] = working_df["path"].isin(excluded_exact_paths)

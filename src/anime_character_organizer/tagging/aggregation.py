@@ -3,7 +3,7 @@ Cluster-level character tag aggregation, weighted voting, confidence margin calc
 """
 
 from collections import defaultdict
-from typing import Any, Dict, List
+from typing import Any, DefaultDict, Dict, List
 
 import numpy as np
 import pandas as pd
@@ -40,10 +40,10 @@ def aggregate_cluster_tags(
             else f"cluster_{cluster_label:05d}_unknown"
         )
 
-        tag_weight = defaultdict(float)
-        tag_count = defaultdict(int)
-        tag_scores = defaultdict(list)
-        tag_examples = defaultdict(list)
+        tag_weight: DefaultDict[str, float] = defaultdict(float)
+        tag_count: DefaultDict[str, int] = defaultdict(int)
+        tag_scores: DefaultDict[str, List[float]] = defaultdict(list)
+        tag_examples: DefaultDict[str, List[str]] = defaultdict(list)
 
         for _, row in ok_group.iterrows():
             character_tags = parse_dict_like(row.get("character_tags_json", {}))

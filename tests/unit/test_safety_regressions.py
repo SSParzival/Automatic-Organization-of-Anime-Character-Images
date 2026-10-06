@@ -119,3 +119,55 @@ def test_boolean_scalar_and_series_whitespace_agree():
 def test_batch_size_rejected(batch_size):
     with pytest.raises(ValueError, match="positive"):
         list(batch_iterable([1, 2], batch_size))
+
+
+def test_source_hardlink_alias_is_preserved(tmp_path):
+    source = tmp_path / "source"
+    source.write_text("preserve bytes")
+    alias = tmp_path / "alias"
+    alias.hardlink_to(source)
+    assert materialize_one_file(source, alias, on_existing="overwrite")["status"] == "error"
+    assert source.read_text() == alias.read_text() == "preserve bytes"
+
+
+def test_cross_device_fallback_copies_without_overwriting(tmp_path):
+    source = tmp_path / "source"
+    source.write_text("preserve bytes")
+    with patch(
+        "anime_character_organizer.materialization.operations.os.link",
+        side_effect=OSError(errno.EXDEV, "different devices"),
+    ):
+        result = materialize_one_file(source, tmp_path / "destination")
+    assert result["status"] == "ok"
+    assert result["operation_used"] == "copy_fallback_from_hardlink"
+    assert (tmp_path / "destination").read_text() == "preserve bytes"
+
+
+def test_planner_keeps_named_output_stem_limit(tmp_path):
+    name = "x" * 130 + ".png"
+    assignment = pd.DataFrame(
+        [{"embedding_row": 0, "named_folder": "named_cluster", "source_path": str(tmp_path / name)}]
+    )
+    result = build_materialization_plan(assignment, tmp_path / "out", folder_column="named_folder", stem_max_length=140)
+    assert result.iloc[0]["destination_filename"] == "0000000__" + name
+
+
+def test_exif_orientation_is_applied_before_crop_resize(tmp_path):
+    from PIL import Image
+
+    from anime_character_organizer.preprocessing.cropping import process_image_for_crop
+
+    source = tmp_path / "oriented.jpg"
+    image = Image.new("RGB", (40, 80), "blue")
+    exif = image.getexif()
+    exif[274] = 6
+    image.save(source, exif=exif)
+    with (
+        patch("anime_character_organizer.preprocessing.cropping.detect_heads_safe", return_value=[]),
+        patch("anime_character_organizer.preprocessing.cropping.detect_persons_safe", return_value=[]),
+    ):
+        result = process_image_for_crop(
+            {"path": str(source), "image_index": 0}, tmp_path / "crops", crop_output_size=None
+        )
+    assert result["status"] == "ok"
+    assert (result["source_width"], result["source_height"]) == (80, 40)

@@ -5,6 +5,7 @@ Integration tests: Running pipeline stages sequentially with temporary test fixt
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 from PIL import Image
@@ -34,7 +35,9 @@ class TestPipelineWorkflowsIntegration(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
-    def test_audit_crop_cluster_materialize_pipeline(self):
+    @patch("anime_character_organizer.preprocessing.cropping.detect_heads_safe", return_value=[])
+    @patch("anime_character_organizer.preprocessing.cropping.detect_persons_safe", return_value=[])
+    def test_audit_crop_cluster_materialize_pipeline(self, _persons, _heads):
         # 1. Run Stage 1 Audit
         audit_res = run_dataset_audit(
             input_dir=self.input_dir,
