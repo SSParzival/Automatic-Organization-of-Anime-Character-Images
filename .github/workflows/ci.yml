@@ -1,0 +1,39 @@
+name: Python and notebook validation
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11']
+    env:
+      MPLBACKEND: Agg
+      HF_HUB_OFFLINE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: |
+          mkdir -p .audit/tmp
+          export TMPDIR="$PWD/.audit/tmp"
+          python -m pip install -e '.[dev]'
+          python -m pip check
+      - name: Lint and format (protected directories excluded)
+        run: |
+          python -m ruff check src scripts tests notebooks --force-exclude --exclude sandbox
+          python -m ruff format --check src scripts tests notebooks --force-exclude --exclude sandbox
+          python -m mypy --cache-dir .audit/mypy-cache
+      - name: Unit and integration tests with model substitutes
+        run: TMPDIR="$PWD/.audit/tmp" python -m pytest tests --ignore-glob='**/sandbox/**'
+      - name: Fresh notebook kernels with synthetic inference
+        run: |
+          export TMPDIR="$PWD/.audit/tmp"
+          export IPYTHONDIR="$PWD/.audit/ipython"
+          export JUPYTER_RUNTIME_DIR="$PWD/.audit/jupyter-runtime"
+          python -m tests.notebook_smoke --output-dir .audit/notebook-smoke
