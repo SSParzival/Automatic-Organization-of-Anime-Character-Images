@@ -90,6 +90,8 @@ Danbooru's hash lookup and name resolution need no account. Reverse image search
 
 SauceNAO is queried only when Danbooru finds nothing. A service that runs out of quota is skipped for the rest of the run, and its images are retried on the next one.
 
+To check the credentials in `.env`, run `pytest -m online`: it sends one hash lookup, one profile request and one search per configured service with a synthetic image, and skips the services without credentials.
+
 **Privacy.** With online lookup on, the MD5 of every image and the character names found are sent to Danbooru. With credentials, a JPEG of at most 768 px of each searched image is uploaded to Danbooru IQDB and, when Danbooru finds nothing, to SauceNAO. `--offline` sends nothing.
 
 ## Tagger choice

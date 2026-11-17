@@ -54,7 +54,8 @@ packages = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--ignore-glob=**/sandbox/** -v"
+addopts = '--ignore-glob=**/sandbox/** -v -m "not online"'
+markers = ["online: sends real requests to Danbooru and SauceNAO (run with -m online)"]
 norecursedirs = ["sandbox", ".git", ".venv", ".audit", "build", "dist"]
 
 [tool.ruff]
