@@ -12,10 +12,20 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 
-from anime_character_organizer.tagging.aggregation import aggregate_cluster_tags, decide_image_name
+from anime_character_organizer.tagging.aggregation import (
+    aggregate_cluster_tags,
+    choose_candidate,
+    decide_image_name,
+    vote_online_cluster,
+)
 from anime_character_organizer.tagging.extraction import extract_character_tags, preprocess_image
 from anime_character_organizer.tagging.normalization import display_tag_name, normalize_tag_name
-from anime_character_organizer.tagging.renaming import REVIEW_FOLDER, build_named_assignment
+from anime_character_organizer.tagging.renaming import (
+    IMAGE_OVER_CLUSTER,
+    ONLINE_MATCH,
+    REVIEW_FOLDER,
+    build_named_assignment,
+)
 from anime_character_organizer.tagging.sampling import select_cluster_samples
 
 
@@ -114,28 +124,14 @@ class TestTagging(unittest.TestCase):
                 "requires_manual_review": [False] * 7,
             }
         )
-        suggestions_df = pd.DataFrame(
-            [
-                {"cluster_label": 0, "accepted_name": True, "suggested_character_tag": "hatsune_miku"},
-                {"cluster_label": 1, "accepted_name": False, "suggested_character_tag": None},
-                {"cluster_label": 2, "accepted_name": True, "suggested_character_tag": "hatsune_miku"},
-            ]
-        )
-        tagging_df = pd.DataFrame(
-            {
-                "embedding_row": [0, 2, 3, 4, 5],
-                "tagging_status": ["ok", "ok", "ok", "ok", "error"],
-                "character_tags_json": [
-                    json.dumps({"kagamine_rin": 0.99}),  # cluster vote wins over a single image
-                    json.dumps({"kagamine_rin": 0.95}),
-                    json.dumps({}),
-                    json.dumps({"megurine_luka": 0.90}),
-                    json.dumps({}),
-                ],
-            }
-        )
+        cluster_names = {0: ("hatsune_miku", "cluster_vote"), 2: ("hatsune_miku", "cluster_vote")}
+        image_names = {
+            0: ("kagamine_rin", "image_tags"),  # cluster vote wins over a single image's tags
+            2: ("kagamine_rin", "image_tags"),
+            4: ("megurine_luka", "image_tags"),
+        }
 
-        df = build_named_assignment(cluster_df, suggestions_df, tagging_df)
+        df = build_named_assignment(cluster_df, cluster_names, image_names)
         self.assertEqual(
             df["named_folder"].tolist(),
             [
@@ -162,18 +158,47 @@ class TestTagging(unittest.TestCase):
         )
         self.assertTrue(df.loc[df["named_folder"].eq(REVIEW_FOLDER), "character_name"].isna().all())
 
+    def test_online_match_and_contradicting_tags_override_cluster_name(self):
+        cluster_df = pd.DataFrame({"embedding_row": [0, 1, 2, 3, 4], "cluster_label": [0, 0, -1, 0, 0]})
+        df = build_named_assignment(
+            cluster_df,
+            {0: ("hatsune_miku", "online_cluster_vote")},
+            {
+                0: ("gumi", IMAGE_OVER_CLUSTER),
+                1: ("kagamine_rin", ONLINE_MATCH),
+                2: ("megurine_luka", ONLINE_MATCH),
+                4: ("kaito", "image_tags"),
+            },
+        )
+        self.assertEqual(
+            df["character_name"].tolist(), ["gumi", "kagamine_rin", "megurine_luka", "hatsune_miku", "hatsune_miku"]
+        )
+        self.assertEqual(
+            df["naming_source"].tolist(),
+            [IMAGE_OVER_CLUSTER, ONLINE_MATCH, ONLINE_MATCH, "online_cluster_vote", "online_cluster_vote"],
+        )
+
     def test_named_assignment_sanitizes_names_and_handles_no_clusters(self):
         cluster_df = pd.DataFrame({"embedding_row": [0], "cluster_label": [-1], "source_path": ["/s.png"]})
-        tagging_df = pd.DataFrame(
-            {
-                "embedding_row": [0],
-                "tagging_status": ["ok"],
-                "character_tags_json": [json.dumps({"rem_(re:zero)": 0.9})],
-            }
-        )
-        df = build_named_assignment(cluster_df, pd.DataFrame(), tagging_df)
+        df = build_named_assignment(cluster_df, {}, {0: ("rem_(re:zero)", "image_tags")})
         self.assertEqual(df.iloc[0]["character_name"], "rem_(re:zero)")
         self.assertEqual(df.iloc[0]["named_folder"], "rem_(re_zero)")
+
+    def test_online_cluster_vote(self):
+        self.assertEqual(vote_online_cluster([["miku"], ["miku", "rin"], ["luka"]]), "miku")
+        self.assertIsNone(vote_online_cluster([["miku"]]))  # one image is not enough
+        self.assertIsNone(vote_online_cluster([["miku", "rin"], ["miku", "rin"]]))  # tie
+        self.assertIsNone(vote_online_cluster([["miku"], ["miku"], ["a"], ["b"], ["c"]]))  # under two thirds
+        self.assertIsNone(vote_online_cluster([["miku"]] * 6 + [["rin"]] * 5))  # a cluster mixing two characters
+        self.assertIsNone(vote_online_cluster([]))
+
+    def test_choose_candidate(self):
+        self.assertEqual(choose_candidate(["miku"], {}), "miku")
+        self.assertIsNone(choose_candidate([], {"miku": 0.9}))
+        self.assertEqual(choose_candidate(["miku", "rin"], {}, preferred="rin"), "rin")
+        self.assertEqual(choose_candidate(["miku", "rin"], {"rin": 0.5, "miku": 0.45}), "rin")  # both are present
+        self.assertIsNone(choose_candidate(["miku", "rin"], {"rin": 0.5, "miku": 0.5}))
+        self.assertIsNone(choose_candidate(["miku", "rin"], {"luka": 0.9}, preferred="luka"))
 
 
 class TestCharacterTagger(unittest.TestCase):
@@ -214,3 +239,71 @@ class TestCharacterTagger(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_decide_images_prefers_online_candidates_then_own_tags():
+    from anime_character_organizer.workflows.naming import decide_images
+
+    candidates = {0: ["rem_(re:zero)"], 1: ["rem_(re:zero)", "ram_(re:zero)"], 2: ["a", "b"]}
+    local = {
+        1: {"ram_(re:zero)": 0.4},
+        2: {"c": 0.99},
+        3: {"emilia_(re:zero)": 0.95},
+        4: {"x": 0.5},
+        5: {"emilia_(re:zero)": 0.95},
+        6: {"emilia_(re:zero)": 0.95, "rem_(re:zero)": 0.3},
+        7: {"rem_(re:zero)": 0.95},
+    }
+    preferred = {2: "b", 5: "rem_(re:zero)", 6: "rem_(re:zero)", 7: "rem_(re:zero)"}
+    names = decide_images(range(8), candidates, local, preferred, min_character_score=0.7, min_top_margin=0.08)
+    assert names == {
+        0: ("rem_(re:zero)", ONLINE_MATCH),
+        1: ("ram_(re:zero)", ONLINE_MATCH),
+        2: ("b", ONLINE_MATCH),  # the cluster's name among the listed characters
+        3: ("emilia_(re:zero)", "image_tags"),
+        5: ("emilia_(re:zero)", IMAGE_OVER_CLUSTER),  # no trace of the cluster's character: misplaced
+        6: ("emilia_(re:zero)", "image_tags"),  # the cluster's character is also present
+        7: ("rem_(re:zero)", "image_tags"),
+    }
+
+
+def test_doubtful_members_are_flagged_cluster_members_only():
+    from anime_character_organizer.workflows.naming import doubtful_members
+
+    df = pd.DataFrame(
+        {
+            "cluster_label": [0, 0, 0, -1],
+            "reassigned_from_noise": ["False", "True", "False", "True"],
+            "is_low_probability": [False, False, True, False],
+        }
+    )
+    assert doubtful_members(df).tolist() == [False, True, True, False]
+
+
+def test_overlapped_keeps_order_and_stops_queued_work():
+    import time
+
+    from anime_character_organizer.workflows.naming import overlapped
+
+    calls = []
+
+    def fetch(item):
+        calls.append(item)
+        time.sleep(0.01)
+        return item * 10
+
+    assert list(overlapped([3, 1, 2], fetch, show_progress=False, desc="")) == [(3, 30), (1, 10), (2, 20)]
+    calls.clear()
+    for item, _ in overlapped(list(range(50)), fetch, show_progress=False, desc=""):
+        break
+    assert len(calls) < 50  # leaving early cancels lookups that have not started
+
+
+def test_needs_tags():
+    from anime_character_organizer.workflows.naming import needs_tags
+
+    assert not needs_tags(["miku"], None, cluster_named=False)
+    assert not needs_tags(["miku", "rin"], "rin", cluster_named=True)
+    assert needs_tags(["miku", "rin"], "luka", cluster_named=True)
+    assert needs_tags([], None, cluster_named=False)
+    assert not needs_tags([], "luka", cluster_named=True)

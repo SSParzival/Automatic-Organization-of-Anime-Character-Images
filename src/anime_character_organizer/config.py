@@ -120,6 +120,9 @@ class TaggingConfig:
     min_name_share: float = 0.35
     min_weighted_score: float = 0.55
     min_top_margin: float = 0.08
+    online_lookup: bool = True
+    max_images_per_cluster_to_search: int = 3
+    min_online_similarity: float = 85.0
 
     def __post_init__(self) -> None:
         validate_parameters(**vars(self))
@@ -139,6 +142,7 @@ def validate_parameters(**settings: object) -> None:
         "min_crop_side",
         "min_samples",
         "max_images_per_cluster_to_tag",
+        "max_images_per_cluster_to_search",
     }
     minimum_two = {"min_cluster_size"}
     nonnegative = {"head_padding_ratio", "person_padding_ratio", "cluster_selection_epsilon", "max_reassign_distance"}
@@ -175,7 +179,11 @@ def validate_parameters(**settings: object) -> None:
                 raise ConfigurationError(f"{key} must be a filename without directory components.")
         if value is None:
             continue
-        if key in positive | minimum_two | nonnegative | fractions | {"crop_quality", "phash_threshold"}:
+        if key in positive | minimum_two | nonnegative | fractions | {
+            "crop_quality",
+            "phash_threshold",
+            "min_online_similarity",
+        }:
             try:
                 if not isinstance(value, (int, float, str)):
                     raise TypeError("Unsupported numeric type")
@@ -198,6 +206,8 @@ def validate_parameters(**settings: object) -> None:
                 raise ConfigurationError(f"{key} must be between zero and one.")
             if key == "phash_threshold" and not 0 <= numeric <= 64:
                 raise ConfigurationError("phash_threshold must be between zero and 64.")
+            if key == "min_online_similarity" and not 0 <= numeric <= 100:
+                raise ConfigurationError("min_online_similarity must be between zero and 100.")
             if key == "crop_quality" and not 1 <= numeric <= 100:
                 raise ConfigurationError("crop_quality must be between one and 100.")
         if key in choices and (not isinstance(value, str) or value not in choices[key]):

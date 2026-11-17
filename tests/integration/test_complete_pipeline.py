@@ -13,10 +13,11 @@ from anime_character_organizer.exceptions import (
     MaterializationError,
     TaggingError,
 )
+from anime_character_organizer.tagging.renaming import ONLINE_MATCH
 from anime_character_organizer.workflows.materialize import run_folder_materialization
 from anime_character_organizer.workflows.naming import run_cluster_naming
 from anime_character_organizer.workflows.pipeline import run_full_pipeline
-from tests.fixtures.model_substitutes import image_index, install_substitutes
+from tests.fixtures.model_substitutes import image_index, install_substitutes, synthetic_tags
 
 
 @pytest.fixture
@@ -149,3 +150,41 @@ def test_materialization_workflow_supports_all_documented_modes(completed_pipeli
     assert len(output["result_df"]) == 10
     for path in output["plan_df"]["destination_path"]:
         assert Path(path).exists()
+
+
+def test_online_matches_name_cluster_without_local_tagging(completed_pipeline, tmp_path):
+    """Two exact Danbooru matches name cluster a; a costume tag and its base character share one name."""
+    from anime_character_organizer.tagging.online import file_md5
+    from tests.fixtures.online_substitutes import FakeDanbooru
+
+    sources = completed_pipeline["audit"]["valid_df"]["path"].sort_values().tolist()
+    client = FakeDanbooru(
+        posts=[
+            {"id": 1, "md5": file_md5(sources[0]), "tag_string_character": "hatsune_miku_(append)"},
+            {"id": 2, "md5": file_md5(sources[1]), "tag_string_character": "hatsune_miku hatsune_miku_(append)"},
+            {"id": 3, "md5": file_md5(sources[9]), "tag_string_character": "saber"},
+        ]
+    )
+    client.can_search_images = False
+    workspace = tmp_path / "online"
+    with (
+        patch(
+            "anime_character_organizer.workflows.naming.clients_from_environment",
+            return_value={"danbooru": client, "saucenao": None},
+        ),
+        patch("anime_character_organizer.workflows.naming.extract_character_tags", side_effect=synthetic_tags),
+        patch("anime_character_organizer.workflows.naming.load_character_tagger"),
+    ):
+        naming = run_cluster_naming(workspace, completed_pipeline["cluster"]["run_dir"], show_progress=False)
+    summary = naming["summary"]
+    assert summary["clusters_named_online"] == 1
+    assert summary["total_tagged_images"] == 5  # only cluster b is tagged locally
+    assigned = naming["named_assignment_df"].set_index("source_path").loc[sources]
+    assert assigned["character_name"].tolist() == ["hatsune_miku"] * 5 + ["character_b"] * 4 + [
+        "artoria_pendragon_(fate)"
+    ]
+    assert assigned["naming_source"].tolist() == [ONLINE_MATCH] * 2 + ["online_cluster_vote"] * 3 + [
+        "cluster_vote"
+    ] * 4 + [ONLINE_MATCH]
+    assert (workspace / "cache" / "online_identification.json").is_file()
+    assert json.loads((workspace / "cache" / "character_names.json").read_text())["saber"] == "artoria_pendragon_(fate)"

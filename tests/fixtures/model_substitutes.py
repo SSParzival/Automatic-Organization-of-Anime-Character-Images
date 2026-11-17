@@ -34,6 +34,21 @@ def synthetic_tags(path):
     return {"character_a": 0.95} if image_index(path) < 5 else {"character_b": 0.90, "character_a": 0.30}
 
 
+def offline_clients():
+    """Online services that fail like an unreachable network, so tests never send requests."""
+    from anime_character_organizer.exceptions import TaggingError
+
+    class Unreachable:
+        can_search_images = False
+
+        def get(self, *args, **kwargs):
+            raise TaggingError("offline test")
+
+        posts = posts_by_md5 = get
+
+    return {"danbooru": Unreachable(), "saucenao": None}
+
+
 def install_substitutes():
     """Start explicitly scoped model patches; callers stop the returned handles."""
     patches = [

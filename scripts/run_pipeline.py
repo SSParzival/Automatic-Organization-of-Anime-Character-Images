@@ -83,6 +83,11 @@ def main(argv=None):
         choices=["stratified", "first", "random"],
         help="Sampling strategy used with --max-images (default: stratified).",
     )
+    parser.add_argument(
+        "--offline",
+        action="store_true",
+        help="Name characters with the local tagger only; no Danbooru or SauceNAO requests.",
+    )
 
     args = parser.parse_args(argv)
 
@@ -98,13 +103,15 @@ def main(argv=None):
             materialization_mode=args.mode,
             max_images=args.max_images,
             sample_strategy=args.sample_strategy,
+            online_lookup=not args.offline,
         )
         print("\n=======================================================")
         print("Pipeline finished successfully!")
         print(f"Organized output: {results['materialize']['final_output_dir']}")
         naming = results["naming"]["summary"]
         print(f"Character folders: {naming['character_folders']}")
-        print(f"Images named: {naming['images_named_by_cluster_vote'] + naming['images_named_by_image_tags']}")
+        named = sum(v for k, v in naming.items() if k.startswith("images_named_"))
+        print(f"Images named: {named} ({naming['images_named_online']} by an online match)")
         print(f"Images needing review: {naming['images_needing_review']}")
         print("=======================================================")
         return 0

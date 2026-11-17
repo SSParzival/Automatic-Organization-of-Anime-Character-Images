@@ -2,8 +2,8 @@
 Cluster-level character tag aggregation, weighted voting, confidence margin calculation, and naming decision rules.
 """
 
-from collections import defaultdict
-from typing import Any, DefaultDict, Dict, List, Mapping, Optional
+from collections import Counter, defaultdict
+from typing import Any, DefaultDict, Dict, List, Mapping, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -175,3 +175,37 @@ def decide_image_name(
         return None
     runner_up = scores[1][0] if len(scores) > 1 else 0.0
     return display_tag_name(scores[0][1]) if scores[0][0] - runner_up >= min_top_margin else None
+
+
+def vote_online_cluster(candidate_sets: Sequence[Sequence[str]], min_votes: int = 2) -> Optional[str]:
+    """
+    Name a cluster when at least `min_votes` identified images, and two thirds of them, list a character.
+
+    The two-thirds bar keeps a cluster that merged two characters from taking the name of the larger one.
+    """
+    counts = Counter(name for names in candidate_sets for name in set(names))
+    ranked = counts.most_common(2)
+    if not ranked:
+        return None
+    runner_up = ranked[1][1] if len(ranked) > 1 else 0
+    best, votes = ranked[0]
+    return best if votes >= min_votes and 3 * votes >= 2 * len(candidate_sets) and votes > runner_up else None
+
+
+def choose_candidate(
+    candidates: Sequence[str], local_tags: Mapping[str, float], preferred: Optional[str] = None
+) -> Optional[str]:
+    """
+    Pick the character an image shows among the characters an online match lists.
+
+    A single candidate is taken as is; otherwise the preferred name (the image's cluster name) wins
+    when listed, then the candidate the local tagger scores highest. Every candidate is known to be
+    in the image, so no margin is required; a tie or no score at all leaves the image unnamed.
+    """
+    unique = list(dict.fromkeys(candidates))
+    if len(unique) <= 1:
+        return unique[0] if unique else None
+    if preferred in unique:
+        return preferred
+    scores = sorted(((float(local_tags.get(name, 0.0)), name) for name in unique), reverse=True)
+    return scores[0][1] if scores[0][0] > scores[1][0] else None

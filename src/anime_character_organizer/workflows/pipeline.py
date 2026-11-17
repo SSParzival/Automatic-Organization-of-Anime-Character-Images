@@ -38,6 +38,7 @@ def run_full_pipeline(
     materialization_mode: str = "hardlink",
     max_images: Optional[int] = None,
     sample_strategy: str = "stratified",
+    online_lookup: bool = True,
     show_progress: bool = True,
 ) -> Dict[str, Any]:
     """
@@ -54,6 +55,7 @@ def run_full_pipeline(
         materialization_mode: 'hardlink', 'copy', or 'symlink'.
         max_images: Optional cap on audited images (representative sample of the input).
         sample_strategy: 'stratified', 'first' or 'random' selection when max_images is set.
+        online_lookup: Identify characters online (Danbooru, SauceNAO) before using the local tagger.
         show_progress: Whether to display tqdm progress bars.
 
     Returns:
@@ -105,6 +107,7 @@ def run_full_pipeline(
     results["naming"] = run_cluster_naming(
         project_dir=project_dir,
         previous_run_dir=results["cluster"]["run_dir"],
+        online_lookup=online_lookup,
         show_progress=show_progress,
     )
 

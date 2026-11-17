@@ -24,6 +24,11 @@ Edit `.env`:
 - `ANIME_PIPELINE_INPUT_DIR`: folder with your images. It is scanned recursively and only read.
 - `ANIME_PIPELINE_PROJECT_DIR`: workspace for outputs. It must be outside the input folder.
 
+Optional, for reverse image search (free accounts; see [Online identification](#online-identification)):
+
+- `DANBOORU_LOGIN`, `DANBOORU_API_KEY`: Danbooru username and the API key from your Danbooru profile.
+- `SAUCENAO_API_KEY`: API key from your SauceNAO account.
+
 `.env` is git-ignored. Command-line flags and exported variables override it.
 
 ## Run
@@ -42,6 +47,7 @@ Key flags:
 | `--mode hardlink\|copy\|symlink` | how organized files reference the originals (default `hardlink`; `copy` gives independent files) |
 | `--input-dir`, `--project-dir` | override the `.env` paths |
 | `--min-cluster-size`, `--cluster-selection-epsilon`, `--max-reassign-distance` | clustering sensitivity (defaults `2`, `0.50`, `0.55` are heuristics, not calibrated values) |
+| `--offline` | name characters with the local tagger only; nothing is sent to Danbooru or SauceNAO |
 
 Run `python scripts/run_pipeline.py --help` for every flag.
 
@@ -52,6 +58,7 @@ All outputs are written under `PROJECT_DIR`:
 - `organized_output/anime_organized_<run>/<character_name>/`: one folder per character, named with its Danbooru tag (for example `hatsune_miku` or `rem_(re_zero)`). Each folder holds `_folder_manifest.csv` (source paths and naming evidence), `_folder_info.json` and `_contact_sheet.jpg`.
 - `organized_output/anime_organized_<run>/_needs_review/`: images without a confident character name.
 - `runs/<stage>_<run>/`: manifests (CSV), summaries (JSON), crops, embeddings, tagger scores, contact sheets and plots for each stage. Every execution creates new runs, so earlier results are never overwritten.
+- `cache/`: online answers kept across runs (`online_identification.json`, by file MD5, and `character_names.json`), so no image is sent to the same service twice. Delete it to query again.
 
 ## How it works
 
@@ -59,13 +66,31 @@ All outputs are written under `PROJECT_DIR`:
 2. **Crop**: detects the character's head, falling back to the whole person and then to the full image, and saves a normalized crop.
 3. **Embed**: extracts [CCIP](https://dghs-imgutils.deepghs.org/main/api_doc/metrics/ccip.html) character-identity vectors from the crops.
 4. **Cluster**: groups the vectors with HDBSCAN. Borderline outliers are reassigned to the nearest cluster when they are close enough.
-5. **Name**: tags crops with [PixAI Tagger v1.0](https://huggingface.co/pixai-labs/pixai-tagger-v1.0) and decides a name for every image:
-   - up to 12 representative crops per cluster vote; the cluster takes the winning character when it scores at least 0.70 on its images, appears in at least 35 % of them, averages 0.55 or more and leads the runner-up by 0.08;
-   - images that HDBSCAN left unclustered, and every image of a cluster whose vote failed, are tagged one by one and take their own top character when it scores at least 0.70 and leads the next candidate by 0.08. A cluster that mixes several characters is split this way;
-   - anything else goes to `_needs_review`. Clusters that receive the same name share one folder.
+5. **Name**: decides a character for every image, trying the cheapest reliable source first:
+   - the MD5 of every image is looked up on Danbooru, 100 images per request and without uploading anything. An unmodified copy of a Danbooru post takes that post's character tags, which people assign by hand;
+   - each cluster is identified online from up to 3 representative images (exact matches, then reverse image search when [credentials](#online-identification) are set). The cluster takes a character listed by at least two of its identified images and by two thirds of them;
+   - clusters without an online name are named by [PixAI Tagger v1.0](https://huggingface.co/pixai-labs/pixai-tagger-v1.0): up to 12 representative crops vote, and the winning character needs at least 0.70 on its images, presence in 35 % of them, an average of 0.55 and a lead of 0.08 over the runner-up;
+   - images that HDBSCAN left unclustered, images of unnamed clusters and cluster members HDBSCAN placed with low confidence are identified online one by one. A match listing one character names the image; when it lists several (a group picture), the image's cluster character wins if listed, otherwise the one the local tagger scores highest on the crop. An image's own online match overrides its cluster's name. Images without an online match take their own top tag when it scores at least 0.70 and leads the next by 0.08. Such a tag also moves an image out of a named cluster when the cluster's character is absent from the image's tags;
+   - every name is mapped to its canonical Danbooru character tag, so spellings, renamed tags and costume variants share one folder (`saber` and `saber_(fate)` become `artoria_pendragon_(fate)`, `hatsune_miku_(append)` becomes `hatsune_miku`);
+   - anything else goes to `_needs_review`. Online lookups run in a background thread while the CPU tags, and their answers are cached, so a second run sends nothing already sent.
 6. **Materialize**: builds the character folders from the original images and verifies them.
 
 Inference runs locally on CPU by default: crops and embeddings use [dghs-imgutils](https://github.com/deepghs/imgutils), the tagger uses ONNX Runtime. GPU inference needs a compatible ONNX Runtime provider.
+
+## Online identification
+
+On a random sample of 300 images, looking images up before tagging them named 82 % of the images instead of 72 %, made no error on the 81 images with Danbooru labels (the previous version made 5) and tagged 27 % fewer crops ([details](docs/validation.md#online-identification-and-naming-strategies)). In the whole 23,847-image collection, 23 % of the files are unmodified Danbooru posts, found by hash in 3 minutes.
+
+Danbooru's hash lookup and name resolution need no account. Reverse image search needs free credentials in `.env`:
+
+| Service | Variables | Searches | What it finds |
+|---|---|---|---|
+| Danbooru IQDB | `DANBOORU_LOGIN`, `DANBOORU_API_KEY` | about 1 per second | Danbooru posts, with their character tags |
+| SauceNAO | `SAUCENAO_API_KEY` | small daily quota on free accounts | Danbooru, Gelbooru, pixiv, X and other indexes; pixiv and X results are read through Danbooru |
+
+SauceNAO is queried only when Danbooru finds nothing. A service that runs out of quota is skipped for the rest of the run, and its images are retried on the next one.
+
+**Privacy.** With online lookup on, the MD5 of every image and the character names found are sent to Danbooru. With credentials, a JPEG of at most 768 px of each searched image is uploaded to Danbooru IQDB and, when Danbooru finds nothing, to SauceNAO. `--offline` sends nothing.
 
 ## Tagger choice
 
@@ -102,9 +127,11 @@ Tests use synthetic images and model stand-ins, so they need no downloads. [docs
 
 ## Limitations
 
-- The tagger only names characters in its vocabulary. Original characters, very obscure characters and characters that appeared after May 2026 go to `_needs_review`.
-- Tagging is the slowest stage: on an Intel i5-14600KF it takes about 9 s per tagged crop, and a run peaks at about 6 GB of RAM. Each image is tagged at most once, and named clusters only tag up to 12 crops. Use `--max-images` to try settings on a sample first.
-- Each image yields one crop, so in multi-character scenes only one character is used.
-- Similar character designs or heavy costume changes can merge or split clusters. A merged cluster is split by per-image tags only when its vote fails.
+- The local tagger only names characters in its vocabulary. Other characters are named only when an online match finds them; original characters and art that is not on Danbooru or in SauceNAO's indexes go to `_needs_review`.
+- Online identification depends on Danbooru and SauceNAO being reachable and on their quotas. When a service fails or runs out, the run goes on with the local tagger and the next run retries those images.
+- Names follow Danbooru's tag relations: costume and form tags join their character, and the few player-character roles Danbooru links the same way share one folder (Stelle and Caelus become `trailblazer_(honkai:_star_rail)`).
+- Tagging is the slowest stage: on an Intel i5-14600KF it takes about 9 s per tagged crop, and a run peaks at about 6 GB of RAM. Each image is tagged at most once, clusters named online tag no crops and other named clusters only tag up to 12. Use `--max-images` to try settings on a sample first.
+- Each image yields one crop, so in multi-character scenes only one character is used. When an online match lists several characters, the one the tagger scores highest on the crop is chosen.
+- Similar character designs or heavy costume changes can merge or split clusters. A merged cluster is split by per-image names only when its vote fails; an online cluster name needs two thirds of the identified images to agree, and images with their own online match keep it.
 - With `hardlink` mode, organized files share their bytes with the originals; with `symlink` mode, they break if the source folder moves.
 - Manifests contain file paths and image-derived features. Keep the workspace private.

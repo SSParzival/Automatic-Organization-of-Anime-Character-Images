@@ -61,3 +61,18 @@ def test_cli_runs_every_stage_and_reports_named_folders(tmp_path, monkeypatch, c
     assert "Images needing review: 0" in out
     output = next((tmp_path / "workspace" / "organized_output").iterdir())
     assert {p.name for p in output.iterdir() if p.is_dir()} == {"character_a", "character_b"}
+
+
+def test_offline_flag_turns_online_lookup_off(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    main = runpy.run_path(str(SCRIPT))["main"]
+    calls = []
+
+    def capture(**kwargs):
+        calls.append(kwargs["online_lookup"])
+        raise RuntimeError("stop after argument parsing")
+
+    monkeypatch.setitem(main.__globals__, "run_full_pipeline", capture)
+    assert main(["--input-dir", str(tmp_path), "--offline"]) == 1
+    assert main(["--input-dir", str(tmp_path)]) == 1
+    assert calls == [False, True]
