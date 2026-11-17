@@ -12,6 +12,7 @@ from PIL import Image
 from anime_character_organizer.tagging.online import (
     DANBOORU_URL,
     DanbooruClient,
+    ServiceLimitReached,
     clients_from_environment,
     send,
     upload_bytes,
@@ -21,9 +22,13 @@ from anime_character_organizer.utils.paths import load_dotenv
 pytestmark = pytest.mark.online
 
 
+@pytest.fixture(scope="module", autouse=True)
+def environment():
+    load_dotenv()
+
+
 @pytest.fixture(scope="module")
 def clients():
-    load_dotenv()
     return clients_from_environment()
 
 
@@ -44,15 +49,11 @@ def test_danbooru_anonymous_md5_lookup():
     assert DanbooruClient().posts_by_md5([secrets.token_hex(16)]) == {}
 
 
-def test_danbooru_credentials_are_accepted(clients):
+def test_danbooru_credentials_are_accepted():
     require("DANBOORU_LOGIN", "DANBOORU_API_KEY")
-    danbooru = clients["danbooru"]
+    danbooru = DanbooruClient(os.environ["DANBOORU_LOGIN"], os.environ["DANBOORU_API_KEY"])
+    assert danbooru.check_credentials() is None
     response = send(danbooru.session, danbooru.limiter, "GET", f"{DANBOORU_URL}/profile.json")
-    reasons = {
-        401: "DANBOORU_LOGIN or DANBOORU_API_KEY is wrong",
-        403: "the API key is valid but restricted; clear its permissions and IP addresses on Danbooru",
-    }
-    assert response.status_code == 200, reasons.get(response.status_code, f"HTTP {response.status_code}")
     assert response.json().get("name", "").lower() == os.environ["DANBOORU_LOGIN"].lower()
 
 
@@ -63,4 +64,8 @@ def test_danbooru_iqdb_search_runs(clients, image):
 
 def test_saucenao_search_runs(clients, image):
     require("SAUCENAO_API_KEY")
-    assert isinstance(clients["saucenao"].search(image), list)
+    try:
+        results = clients["saucenao"].search(image)
+    except ServiceLimitReached:
+        pytest.skip("SauceNAO's daily quota for this IP is spent; the key cannot be checked until it resets.")
+    assert isinstance(results, list)

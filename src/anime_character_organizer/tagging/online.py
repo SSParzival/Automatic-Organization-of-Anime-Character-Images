@@ -10,6 +10,7 @@ import io
 import os
 import re
 import time
+import warnings
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Union
 
@@ -104,6 +105,24 @@ class DanbooruClient:
         self.limiter = RateLimiter(0.5)
         self.search_limiter = RateLimiter(1.0)
 
+    def check_credentials(self) -> Optional[str]:
+        """Why Danbooru rejects the login and API key, or None when it accepts them or cannot be reached."""
+        if not self.can_search_images:
+            return None
+        try:
+            response = send(self.session, self.limiter, "GET", f"{DANBOORU_URL}/profile.json")
+        except TaggingError:
+            return None  # unreachable: the identifier disables Danbooru on its first failed lookup
+        if response.status_code == 401:
+            return "DANBOORU_LOGIN or DANBOORU_API_KEY is wrong"
+        if response.status_code == 403:
+            return "the API key is restricted; clear its permissions and IP addresses on Danbooru"
+        return None
+
+    def drop_credentials(self) -> None:
+        self.session.auth = None
+        self.can_search_images = False
+
     def get(self, endpoint: str, **params: Any) -> List[Dict[str, Any]]:
         response = send(self.session, self.limiter, "GET", f"{DANBOORU_URL}/{endpoint}.json", params=params)
         if not response.ok:
@@ -146,9 +165,12 @@ class SauceNaoClient:
         self.session.headers["User-Agent"] = USER_AGENT
         self.api_key = api_key
         self.limiter = RateLimiter(0.0)
+        self.daily_searches_left: Optional[int] = None
 
     def search(self, image: bytes) -> List[Dict[str, Any]]:
         """Results sorted by descending similarity; waits out the 30 s window once if it is exhausted."""
+        if self.daily_searches_left == 0:
+            raise ServiceLimitReached("SauceNAO daily search limit reached.")
         for _ in range(2):
             response = send(
                 self.session,
@@ -156,28 +178,40 @@ class SauceNaoClient:
                 "POST",
                 SAUCENAO_URL,
                 retries=1,
-                params={"output_type": 2, "api_key": self.api_key, "db": 999, "numres": 8},
+                data={"output_type": 2, "api_key": self.api_key, "db": 999, "numres": 8},  # the key stays out of URLs
                 files={"file": ("image.jpg", image, "image/jpeg")},
             )
             header = response.json().get("header", {}) if "json" in response.headers.get("content-type", "") else {}
             message = str(header.get("message", ""))
             if response.status_code == 429:
-                if "daily" in message.lower():
-                    raise ServiceLimitReached(f"SauceNAO daily search limit reached: {message}")
+                if "daily" in message.lower():  # the message names the account and IP; keep it out of logs
+                    raise ServiceLimitReached("SauceNAO daily search limit reached.")
                 time.sleep(30)
                 continue
-            if not response.ok or int(header.get("status", 0)) != 0:
-                raise TaggingError(f"SauceNAO returned HTTP {response.status_code}: {message[:200]}")
+            results = response.json().get("results") or [] if response.ok else []
+            # A positive status means some of SauceNAO's indexes failed; their partial results still count.
+            status = int(header.get("status", 0))
+            if not response.ok or status < 0 or (status > 0 and not results):
+                raise TaggingError(f"SauceNAO returned HTTP {response.status_code}, status {status}: {message[:200]}")
             self.limiter.interval = 30.0 if int(header.get("short_remaining", 1)) <= 0 else 0.0
-            results = response.json().get("results") or []
+            self.daily_searches_left = int(header.get("long_remaining", 1))
             return sorted(results, key=lambda r: -float(r["header"]["similarity"]))
         raise ServiceLimitReached("SauceNAO short-term limit did not reset.")
 
 
 def clients_from_environment() -> Dict[str, Any]:
-    """Danbooru client (always) and SauceNAO client (when SAUCENAO_API_KEY is set)."""
+    """
+    Danbooru client (always) and SauceNAO client (when SAUCENAO_API_KEY is set).
+
+    Rejected Danbooru credentials are dropped with a warning, so hash lookups still run anonymously.
+    """
     saucenao_key = os.environ.get("SAUCENAO_API_KEY")
+    danbooru = DanbooruClient(os.environ.get("DANBOORU_LOGIN"), os.environ.get("DANBOORU_API_KEY"))
+    problem = danbooru.check_credentials()
+    if problem:
+        danbooru.drop_credentials()
+        warnings.warn(f"Danbooru reverse image search disabled: {problem}.", RuntimeWarning, stacklevel=2)
     return {
-        "danbooru": DanbooruClient(os.environ.get("DANBOORU_LOGIN"), os.environ.get("DANBOORU_API_KEY")),
+        "danbooru": danbooru,
         "saucenao": SauceNaoClient(saucenao_key) if saucenao_key else None,
     }

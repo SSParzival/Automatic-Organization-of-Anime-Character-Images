@@ -10,8 +10,10 @@ from PIL import Image
 from anime_character_organizer.exceptions import TaggingError
 from anime_character_organizer.tagging.identification import OnlineIdentifier
 from anime_character_organizer.tagging.online import (
+    DanbooruClient,
     SauceNaoClient,
     ServiceLimitReached,
+    clients_from_environment,
     file_md5,
     send,
     upload_bytes,
@@ -215,3 +217,50 @@ def test_saucenao_daily_limit_raises_and_short_limit_slows_down():
     client.session.request.return_value = response(200, ok)
     assert len(client.search(b"jpeg")) == 1
     assert client.limiter.interval == 30.0
+
+
+def test_saucenao_key_is_sent_in_the_body_and_an_exhausted_day_stops_searches():
+    client = SauceNaoClient("secret")
+    client.session = MagicMock()
+    last = {"header": {"status": 0, "long_remaining": 0}, "results": []}
+    client.session.request.return_value = response(200, last)
+    assert client.search(b"jpeg") == []
+    sent = client.session.request.call_args.kwargs
+    assert sent["data"]["api_key"] == "secret" and "params" not in sent
+    with pytest.raises(ServiceLimitReached):
+        client.search(b"jpeg")
+    assert client.session.request.call_count == 1
+
+
+@pytest.mark.parametrize(
+    "outcome, problem",
+    [(response(200), None), (response(401), "is wrong"), (response(403), "restricted"), (TaggingError("down"), None)],
+)
+def test_danbooru_credential_check(outcome, problem):
+    client = DanbooruClient("user", "key")
+    with patch("anime_character_organizer.tagging.online.send", side_effect=[outcome]):
+        found = client.check_credentials()
+    assert found == problem if problem is None else problem in found
+    assert DanbooruClient().check_credentials() is None  # no credentials, no request
+
+
+def test_rejected_danbooru_credentials_fall_back_to_anonymous_lookups(monkeypatch):
+    monkeypatch.setenv("DANBOORU_LOGIN", "user")
+    monkeypatch.setenv("DANBOORU_API_KEY", "key")
+    monkeypatch.delenv("SAUCENAO_API_KEY", raising=False)
+    with patch.object(DanbooruClient, "check_credentials", return_value="rejected"), pytest.warns(RuntimeWarning):
+        clients = clients_from_environment()
+    assert not clients["danbooru"].can_search_images and clients["danbooru"].session.auth is None
+    assert clients["saucenao"] is None
+
+
+def test_saucenao_keeps_partial_results_and_rejects_failed_searches():
+    client = SauceNaoClient("key")
+    client.session = MagicMock()
+    partial = {"header": {"status": 1}, "results": [{"header": {"similarity": "90"}, "data": {}}]}
+    client.session.request.return_value = response(200, partial)
+    assert len(client.search(b"jpeg")) == 1
+    for header in ({"status": 1}, {"status": -2, "message": "bad image"}):
+        client.session.request.return_value = response(200, {"header": header})
+        with pytest.raises(TaggingError, match="status"):
+            client.search(b"jpeg")
