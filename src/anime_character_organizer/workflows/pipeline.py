@@ -3,7 +3,7 @@ End-to-end pipeline orchestrator chaining stages 01 through 06.
 """
 
 from pathlib import Path
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union
 
 from ..config import validate_parameters
 from ..utils.paths import checked_path
@@ -26,6 +26,8 @@ def run_full_pipeline(
     separate_review_folders: bool = False,
     run_tagging: bool = False,
     materialization_mode: str = "hardlink",
+    max_images: Optional[int] = None,
+    sample_strategy: str = "stratified",
     show_progress: bool = True,
 ) -> Dict[str, Any]:
     """
@@ -42,6 +44,8 @@ def run_full_pipeline(
         separate_review_folders: Whether to split review items into separate folders (default: False).
         run_tagging: If True, executes stage 06 semantic naming after materialization.
         materialization_mode: 'hardlink', 'copy', or 'symlink'.
+        max_images: Optional cap on audited images (representative sample of the input).
+        sample_strategy: 'stratified', 'first' or 'random' selection when max_images is set.
         show_progress: Whether to display tqdm progress bars.
 
     Returns:
@@ -57,6 +61,8 @@ def run_full_pipeline(
     results["audit"] = run_dataset_audit(
         input_dir=input_dir,
         project_dir=project_dir,
+        max_images=max_images,
+        sample_strategy=sample_strategy,
         show_progress=show_progress,
     )
 

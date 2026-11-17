@@ -110,9 +110,10 @@ def extract_all_embeddings(
     batches = list(batch_iterable(crop_paths, batch_size))
     iterator = tqdm(batches, desc="Extracting CCIP embeddings") if show_progress else batches
 
-    for batch in iterator:
+    for idx, batch in enumerate(iterator):
         batch_records = extract_batch_with_fallback(batch, model=model, size=image_size)
         all_records.extend(batch_records)
-        gc.collect()
+        if (idx + 1) % 20 == 0:
+            gc.collect()
 
     return all_records

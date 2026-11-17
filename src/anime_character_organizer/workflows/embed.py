@@ -2,7 +2,6 @@
 Workflow orchestrator for Stage 3: CCIP embedding extraction and L2 normalization.
 """
 
-import json
 import platform
 import sys
 from pathlib import Path
@@ -17,8 +16,8 @@ from ..embeddings.extraction import extract_all_embeddings, warmup_ccip_model
 from ..embeddings.normalization import l2_normalize_matrix
 from ..exceptions import ConfigurationError, EmbeddingError, InvalidImageError
 from ..utils.paths import checked_path, normalize_path_string
-from ..utils.runs import create_run_directory, find_latest_run
-from ..utils.serialization import json_safe_value, require_columns, safe_bool_series
+from ..utils.runs import init_stage_run, resolve_previous_run
+from ..utils.serialization import require_columns, safe_bool_series, write_json
 from ..utils.time import now_iso
 from ..utils.validation import validate_image_file
 
@@ -40,17 +39,15 @@ def run_embedding_extraction(
     validate_parameters(**locals())
     project_dir = checked_path(project_dir)
 
-    if previous_run_dir is None:
-        previous_run_dir = find_latest_run(
-            project_dir=project_dir,
-            stage_prefix="02_crop_preparation_*",
-            required_relative_paths=[
-                Path("reports") / "summary.json",
-                Path("tables") / "crop_manifest_with_review_flags.csv",
-            ],
-        )
-    else:
-        previous_run_dir = checked_path(previous_run_dir)
+    previous_run_dir = resolve_previous_run(
+        project_dir=project_dir,
+        previous_run_dir=previous_run_dir,
+        stage_prefix="02_crop_preparation_*",
+        required_relative_paths=[
+            Path("reports") / "summary.json",
+            Path("tables") / "crop_manifest_with_review_flags.csv",
+        ],
+    )
 
     crop_manifest_path = checked_path(previous_run_dir / "tables" / "crop_manifest_with_review_flags.csv")
     if not crop_manifest_path.exists():
@@ -61,15 +58,12 @@ def run_embedding_extraction(
     if "crop_path" not in crop_df.columns or "status" not in crop_df.columns:
         raise ConfigurationError("Crop manifest missing required columns 'crop_path' or 'status'.")
 
-    run_dir = create_run_directory(project_dir, "03_ccip_embeddings")
-    run_id = run_dir.name.removeprefix("03_ccip_embeddings_")
-    reports_dir = run_dir / "reports"
-    tables_dir = run_dir / "tables"
-    arrays_dir = run_dir / "arrays"
-    logs_dir = run_dir / "logs"
-
-    for d in [run_dir, reports_dir, tables_dir, arrays_dir, logs_dir]:
-        d.mkdir(parents=True, exist_ok=True)
+    run_dir, run_id, dirs = init_stage_run(
+        project_dir, "03_ccip_embeddings", ["reports", "tables", "arrays", "logs"]
+    )
+    reports_dir = dirs["reports"]
+    tables_dir = dirs["tables"]
+    arrays_dir = dirs["arrays"]
 
     if crop_df["crop_path"].dropna().duplicated().any():
         raise ConfigurationError("Crop paths must be unique for an unambiguous embedding manifest.")
@@ -100,12 +94,9 @@ def run_embedding_extraction(
 
     # Validate crop files before inference
     validation_rows = []
-    val_iter = (
-        tqdm(embedding_input_df.iterrows(), total=len(embedding_input_df), desc="Validating crop files")
-        if show_progress
-        else embedding_input_df.iterrows()
-    )
-    for _, row in val_iter:
+    records = embedding_input_df[["embedding_index", "crop_path"]].to_dict("records")
+    val_iter = tqdm(records, total=len(records), desc="Validating crop files") if show_progress else records
+    for row in val_iter:
         is_valid, error_type, error_msg = validate_image_file(row["crop_path"])
         validation_rows.append(
             {
@@ -240,9 +231,7 @@ def run_embedding_extraction(
         },
     }
 
-    summary_path = reports_dir / "summary.json"
-    with summary_path.open("w", encoding="utf-8") as f:
-        json.dump(json_safe_value(summary), f, ensure_ascii=False, indent=2, allow_nan=False)
+    summary_path = write_json(reports_dir / "summary.json", summary)
 
     return {
         "run_id": run_id,

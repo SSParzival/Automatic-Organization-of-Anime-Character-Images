@@ -3,7 +3,7 @@ Filesystem path normalization and portability helpers.
 """
 
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 
 def normalize_path_string(value: Union[str, Path]) -> str:
@@ -69,3 +69,56 @@ def notebook_paths() -> tuple[Path, Path]:
     if not project.is_absolute() or not source.is_absolute():
         raise ConfigurationError("Notebook input and workspace paths must be absolute.")
     return checked_path(source), checked_path(project)
+
+
+def ensure_empty_output_dir(path: Union[str, Path]) -> Path:
+    """Validate that an output directory is safe and either new or empty."""
+    from ..exceptions import ConfigurationError
+
+    checked = checked_path(path)
+    if checked.exists():
+        if not checked.is_dir():
+            raise ConfigurationError(f"Output path exists and is not a directory: {checked}")
+        if any(checked.iterdir()):
+            raise ConfigurationError("Output directory must be new or empty to protect existing artifacts.")
+    return checked
+
+
+def load_dotenv(env_path: Optional[Union[str, Path]] = None) -> Optional[Path]:
+    """Load KEY=VALUE pairs from a .env file into os.environ without overwriting existing vars."""
+    import os
+
+    from ..exceptions import ConfigurationError
+
+    if env_path is not None:
+        candidate = checked_path(env_path)
+        if not candidate.is_file():
+            raise ConfigurationError(f"Environment file not found: {candidate}")
+    else:
+        cwd_env = Path.cwd() / ".env"
+        repo_env = Path(__file__).resolve().parents[3] / ".env"
+        if cwd_env.is_file():
+            candidate = cwd_env
+        elif repo_env.is_file():
+            candidate = repo_env
+        else:
+            return None
+        candidate = checked_path(candidate)
+
+    for raw_line in candidate.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+        if key and value:
+            os.environ.setdefault(key, value)
+
+    return candidate

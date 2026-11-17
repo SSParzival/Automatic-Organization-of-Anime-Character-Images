@@ -2,7 +2,6 @@
 Workflow orchestrator for Stage 1: Dataset audit, validation, and duplicate detection.
 """
 
-import json
 import os
 import platform
 import sys
@@ -10,12 +9,12 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Set, Union
 
 from ..config import DEFAULT_VALID_EXTENSIONS, validate_parameters
-from ..data.audit import audit_images, scan_candidate_files
+from ..data.audit import audit_images, sample_candidate_files, scan_candidate_files
 from ..data.duplicates import find_exact_duplicates, find_perceptual_duplicates
 from ..exceptions import ConfigurationError
 from ..utils.paths import checked_path
-from ..utils.runs import create_run_directory
-from ..utils.serialization import json_safe_value
+from ..utils.runs import init_stage_run
+from ..utils.serialization import write_json
 from ..utils.time import now_iso
 
 
@@ -25,6 +24,9 @@ def run_dataset_audit(
     valid_extensions: Optional[Set[str]] = None,
     phash_threshold: int = 6,
     max_workers: Optional[int] = None,
+    max_images: Optional[int] = None,
+    sample_strategy: str = "stratified",
+    random_seed: int = 42,
     show_progress: bool = True,
 ) -> Dict[str, Any]:
     """
@@ -51,26 +53,29 @@ def run_dataset_audit(
     if max_workers is None:
         max_workers = max(1, min(16, (os.cpu_count() or 4)))
 
-    run_dir = create_run_directory(project_dir, "01_dataset_audit")
-    run_id = run_dir.name.removeprefix("01_dataset_audit_")
-    reports_dir = run_dir / "reports"
-    tables_dir = run_dir / "tables"
-    logs_dir = run_dir / "logs"
+    run_dir, run_id, dirs = init_stage_run(project_dir, "01_dataset_audit", ["reports", "tables", "logs"])
+    reports_dir = dirs["reports"]
+    tables_dir = dirs["tables"]
 
-    for d in [run_dir, reports_dir, tables_dir, logs_dir]:
-        d.mkdir(parents=True, exist_ok=True)
-
-    candidate_files = scan_candidate_files(input_dir, valid_extensions)
+    all_candidates = scan_candidate_files(input_dir, valid_extensions)
+    candidate_files = sample_candidate_files(
+        all_candidates,
+        max_images=max_images,
+        strategy=sample_strategy,
+        seed=random_seed,
+    )
 
     scan_report = {
         "input_dir": input_dir.as_posix(),
         "run_dir": run_dir.as_posix(),
+        "discovered_file_count": len(all_candidates),
         "candidate_file_count": len(candidate_files),
-        "valid_extensions": sorted(list(valid_extensions)),
+        "max_images": max_images,
+        "sample_strategy": sample_strategy if max_images is not None else None,
+        "valid_extensions": sorted(valid_extensions),
         "created_at": now_iso(),
     }
-    with (reports_dir / "scan_report.json").open("w", encoding="utf-8") as f:
-        json.dump(json_safe_value(scan_report), f, ensure_ascii=False, indent=2, allow_nan=False)
+    write_json(reports_dir / "scan_report.json", scan_report)
 
     if not candidate_files:
         raise ConfigurationError(f"No candidate image files found in {input_dir} with extensions {valid_extensions}")
@@ -108,6 +113,7 @@ def run_dataset_audit(
         "created_at": now_iso(),
         "input_dir": input_dir.as_posix(),
         "run_dir": run_dir.as_posix(),
+        "total_discovered_files": int(len(all_candidates)),
         "total_candidate_files": int(len(metadata_df)),
         "total_scanned_files": int(len(metadata_df)),
         "valid_images": int(len(valid_df)),
@@ -135,9 +141,7 @@ def run_dataset_audit(
         },
     }
 
-    summary_path = reports_dir / "summary.json"
-    with summary_path.open("w", encoding="utf-8") as f:
-        json.dump(json_safe_value(summary), f, ensure_ascii=False, indent=2, allow_nan=False)
+    summary_path = write_json(reports_dir / "summary.json", summary)
 
     return {
         "run_id": run_id,

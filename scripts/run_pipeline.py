@@ -4,29 +4,34 @@ CLI script to run the complete end-to-end anime character organization pipeline.
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
+from anime_character_organizer.utils.paths import load_dotenv
 from anime_character_organizer.workflows.pipeline import run_full_pipeline
 
 
-def main():
+def main(argv=None):
+    load_dotenv()
+    env_input = os.environ.get("ANIME_PIPELINE_INPUT_DIR")
     parser = argparse.ArgumentParser(
         description="Run complete Automatic Organization of Anime Character Images pipeline."
     )
     parser.add_argument(
         "--input-dir",
         "-i",
-        required=True,
+        required=env_input is None,
+        default=Path(env_input) if env_input else None,
         type=Path,
-        help="Path to folder containing source images to organize.",
+        help="Folder with source images (default: ANIME_PIPELINE_INPUT_DIR from .env).",
     )
     parser.add_argument(
         "--project-dir",
         "-p",
-        default=Path("./anime_character_pipeline"),
+        default=Path(os.environ.get("ANIME_PIPELINE_PROJECT_DIR", "./anime_character_pipeline")),
         type=Path,
-        help="Base pipeline workspace directory (default: ./anime_character_pipeline).",
+        help="Pipeline workspace (default: ANIME_PIPELINE_PROJECT_DIR or ./anime_character_pipeline).",
     )
     parser.add_argument(
         "--mode",
@@ -77,7 +82,20 @@ def main():
         help="Also execute stage 6 semantic naming with anime tagger.",
     )
 
-    args = parser.parse_args()
+    parser.add_argument(
+        "--max-images",
+        type=int,
+        default=None,
+        help="Process only a representative sample of this many images (default: all).",
+    )
+    parser.add_argument(
+        "--sample-strategy",
+        default="stratified",
+        choices=["stratified", "first", "random"],
+        help="Sampling strategy used with --max-images (default: stratified).",
+    )
+
+    args = parser.parse_args(argv)
 
     try:
         results = run_full_pipeline(
@@ -91,6 +109,8 @@ def main():
             separate_review_folders=args.separate_review_folders,
             run_tagging=args.with_tagging,
             materialization_mode=args.mode,
+            max_images=args.max_images,
+            sample_strategy=args.sample_strategy,
         )
         print("\n=======================================================")
         print("Pipeline finished successfully!")

@@ -68,6 +68,8 @@ def create_contact_sheet(
     for idx, path in enumerate(valid_paths):
         try:
             with Image.open(path) as source_image:
+                if source_image.format == "JPEG":
+                    source_image.draft("RGB", (thumb_size * 2, thumb_size * 2))
                 img = ImageOps.exif_transpose(source_image).convert("RGB")
                 img.thumbnail((thumb_size, thumb_size), Image.Resampling.LANCZOS)
 

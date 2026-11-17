@@ -16,7 +16,7 @@ from ..materialization.operations import materialize_one_file
 from ..materialization.planner import build_materialization_plan
 from ..materialization.validation import validate_materialized_files
 from ..utils.naming import sanitize_folder_name
-from ..utils.paths import checked_path, normalize_path_string
+from ..utils.paths import checked_path, ensure_empty_output_dir, normalize_path_string
 from ..utils.runs import create_run_directory, find_latest_run
 from ..utils.serialization import json_safe_value, require_columns, safe_bool
 from ..utils.time import now_iso
@@ -78,12 +78,7 @@ def run_folder_materialization(
 
     if final_output_dir is None:
         final_output_dir = project_dir / "organized_output" / f"anime_organized_{run_id}"
-    else:
-        final_output_dir = checked_path(final_output_dir)
-
-    final_output_dir = checked_path(final_output_dir)
-    if final_output_dir.exists() and any(final_output_dir.iterdir()):
-        raise ConfigurationError("Output directory must be new or empty to protect existing artifacts.")
+    final_output_dir = ensure_empty_output_dir(final_output_dir)
 
     for d in [run_dir, reports_dir, tables_dir, logs_dir, final_output_dir]:
         d.mkdir(parents=True, exist_ok=True)

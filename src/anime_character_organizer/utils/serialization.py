@@ -3,7 +3,8 @@ Data type coercion and serialization helpers.
 """
 
 import json
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -108,3 +109,14 @@ def require_columns(frame: pd.DataFrame, columns: set[str], context: str) -> Non
     missing = columns - set(frame.columns)
     if missing:
         raise ConfigurationError(f"{context} missing required columns: {sorted(missing)}")
+
+
+def write_json(path: Union[str, Path], payload: Any) -> Path:
+    """Serialize payload as strict UTF-8 JSON with non-finite values converted to null."""
+    from .paths import checked_path
+
+    target = checked_path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("w", encoding="utf-8") as f:
+        json.dump(json_safe_value(payload), f, ensure_ascii=False, indent=2, allow_nan=False)
+    return target

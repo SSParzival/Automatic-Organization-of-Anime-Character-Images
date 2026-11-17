@@ -22,7 +22,7 @@ from ..tagging.extraction import extract_tags_with_fallback
 from ..tagging.renaming import build_folder_rename_plan
 from ..tagging.sampling import select_cluster_samples
 from ..utils.naming import sanitize_filename_component
-from ..utils.paths import checked_path, normalize_path_string
+from ..utils.paths import checked_path, ensure_empty_output_dir, normalize_path_string
 from ..utils.runs import create_run_directory, find_latest_run
 from ..utils.serialization import json_safe_value, require_columns, safe_bool, safe_json_dumps
 from ..utils.time import now_iso
@@ -108,11 +108,7 @@ def run_cluster_naming(
     if create_named_output:
         if named_output_dir is None:
             named_output_dir = project_dir / "organized_output" / f"anime_named_{run_id}"
-        else:
-            named_output_dir = checked_path(named_output_dir)
-        named_output_dir = checked_path(named_output_dir)
-        if named_output_dir.exists() and any(named_output_dir.iterdir()):
-            raise ConfigurationError("Output directory must be new or empty to protect existing artifacts.")
+        named_output_dir = ensure_empty_output_dir(named_output_dir)
 
         named_output_dir.mkdir(parents=True, exist_ok=True)
 

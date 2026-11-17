@@ -33,7 +33,8 @@ def save_rgb_image(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     if crop_format.upper() == "JPEG":
-        image.convert("RGB").save(output_path, format="JPEG", quality=quality, optimize=True)
+        rgb = image if image.mode == "RGB" else image.convert("RGB")
+        rgb.save(output_path, format="JPEG", quality=quality, optimize=True)
     elif crop_format.upper() == "PNG":
         image.save(output_path, format="PNG", optimize=True)
     else:
@@ -102,43 +103,54 @@ def process_image_for_crop(
             record["source_height"] = int(height)
 
             head_detections = detect_heads_safe(img, conf_threshold=head_conf, iou_threshold=head_iou)
-            person_detections = detect_persons_safe(img, conf_threshold=person_conf, iou_threshold=person_iou)
-
             record["detected_heads_count"] = int(len(head_detections))
-            record["detected_persons_count"] = int(len(person_detections))
             record["is_multi_head"] = bool(len(head_detections) > 1)
-            record["is_multi_person"] = bool(len(person_detections) > 1)
             record["head_detections_json"] = json.dumps(
                 [detection_to_dict(det) for det in head_detections], ensure_ascii=False
             )
-            record["person_detections_json"] = json.dumps(
-                [detection_to_dict(det) for det in person_detections], ensure_ascii=False
-            )
 
             best_head = choose_best_detection(head_detections, width, height)
-            best_person = choose_best_detection(person_detections, width, height)
+            selected_type: Optional[str] = None
+            selected_score: Optional[float] = None
+            x0 = y0 = x1 = y1 = 0
 
             if best_head is not None:
-                selected_box = expand_box(best_head[0], width, height, head_padding)
-                selected_type = "head"
-                selected_score = float(best_head[2])
-            elif best_person is not None:
-                selected_box = expand_box(best_person[0], width, height, person_padding)
-                selected_type = "person"
-                selected_score = float(best_person[2])
+                hx0, hy0, hx1, hy1 = clamp_box(
+                    expand_box(best_head[0], width, height, head_padding), width, height
+                )
+                if (hx1 - hx0) >= min_crop_side and (hy1 - hy0) >= min_crop_side:
+                    x0, y0, x1, y1 = hx0, hy0, hx1, hy1
+                    selected_type = "head"
+                    selected_score = float(best_head[2])
+
+            if selected_type is None:
+                person_detections = detect_persons_safe(img, conf_threshold=person_conf, iou_threshold=person_iou)
+                record["detected_persons_count"] = int(len(person_detections))
+                record["is_multi_person"] = bool(len(person_detections) > 1)
+                record["person_detections_json"] = json.dumps(
+                    [detection_to_dict(det) for det in person_detections], ensure_ascii=False
+                )
+                best_person = choose_best_detection(person_detections, width, height)
+                if best_person is not None:
+                    px0, py0, px1, py1 = clamp_box(
+                        expand_box(best_person[0], width, height, person_padding), width, height
+                    )
+                    if (px1 - px0) >= min_crop_side and (py1 - py0) >= min_crop_side:
+                        x0, y0, x1, y1 = px0, py0, px1, py1
+                        selected_type = "person"
+                        selected_score = float(best_person[2])
+                    else:
+                        x0, y0, x1, y1 = 0, 0, width, height
+                        selected_type = "full_image_small_detection_fallback"
+                else:
+                    x0, y0, x1, y1 = 0, 0, width, height
+                    selected_type = (
+                        "full_image_small_detection_fallback" if best_head is not None else "full_image"
+                    )
             else:
-                selected_box = (0, 0, width, height)
-                selected_type = "full_image"
-                selected_score = None
+                record["person_detections_json"] = "[]"
 
-            x0, y0, x1, y1 = clamp_box(selected_box, width, height)
-
-            if (x1 - x0) < min_crop_side or (y1 - y0) < min_crop_side:
-                x0, y0, x1, y1 = 0, 0, width, height
-                selected_type = "full_image_small_detection_fallback"
-                selected_score = None
-
-            crop = img.crop((x0, y0, x1, y1))
+            crop = img if (x0, y0, x1, y1) == (0, 0, width, height) else img.crop((x0, y0, x1, y1))
 
             if crop_output_size is not None:
                 crop = crop.resize(crop_output_size, Image.Resampling.LANCZOS)

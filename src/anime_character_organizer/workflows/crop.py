@@ -2,7 +2,6 @@
 Workflow orchestrator for Stage 2: Representative set selection and crop preparation.
 """
 
-import json
 import os
 import platform
 import sys
@@ -18,8 +17,8 @@ from ..config import validate_parameters
 from ..exceptions import ConfigurationError
 from ..preprocessing.cropping import add_review_flags, process_image_for_crop
 from ..utils.paths import checked_path, normalize_path_string
-from ..utils.runs import create_run_directory, find_latest_run
-from ..utils.serialization import json_safe_value, require_columns, safe_bool_series, safe_read_csv
+from ..utils.runs import init_stage_run, resolve_previous_run
+from ..utils.serialization import require_columns, safe_bool_series, safe_read_csv, write_json
 from ..utils.time import now_iso
 from ..visualization.contact_sheet import create_contact_sheet
 
@@ -47,14 +46,12 @@ def run_crop_preparation(
     validate_parameters(**locals())
     project_dir = checked_path(project_dir)
 
-    if previous_run_dir is None:
-        previous_run_dir = find_latest_run(
-            project_dir=project_dir,
-            stage_prefix="01_dataset_audit_*",
-            required_relative_paths=[Path("reports") / "summary.json", Path("tables") / "valid_images.csv"],
-        )
-    else:
-        previous_run_dir = checked_path(previous_run_dir)
+    previous_run_dir = resolve_previous_run(
+        project_dir=project_dir,
+        previous_run_dir=previous_run_dir,
+        stage_prefix="01_dataset_audit_*",
+        required_relative_paths=[Path("reports") / "summary.json", Path("tables") / "valid_images.csv"],
+    )
 
     valid_images_path = checked_path(previous_run_dir / "tables" / "valid_images.csv")
     if not valid_images_path.exists():
@@ -68,16 +65,15 @@ def run_crop_preparation(
     perceptual_groups_path = checked_path(previous_run_dir / "tables" / "perceptual_duplicate_groups.csv")
     perceptual_groups_df = safe_read_csv(perceptual_groups_path)
 
-    run_dir = create_run_directory(project_dir, "02_crop_preparation")
-    run_id = run_dir.name.removeprefix("02_crop_preparation_")
-    reports_dir = run_dir / "reports"
-    tables_dir = run_dir / "tables"
-    logs_dir = run_dir / "logs"
-    contact_sheets_dir = run_dir / "contact_sheets"
-    crops_dir = run_dir / "crops" / "crops"
-
-    for d in [run_dir, reports_dir, tables_dir, logs_dir, contact_sheets_dir, crops_dir]:
-        d.mkdir(parents=True, exist_ok=True)
+    run_dir, run_id, dirs = init_stage_run(
+        project_dir,
+        "02_crop_preparation",
+        ["reports", "tables", "logs", "contact_sheets", "crops/crops"],
+    )
+    reports_dir = dirs["reports"]
+    tables_dir = dirs["tables"]
+    contact_sheets_dir = dirs["contact_sheets"]
+    crops_dir = dirs["crops/crops"]
 
     working_df = valid_df.copy()
     working_df["path"] = working_df["path"].map(normalize_path_string)
@@ -121,7 +117,7 @@ def run_crop_preparation(
         futures = {
             executor.submit(
                 process_image_for_crop,
-                row=dict(row),
+                row=row,
                 crops_dir=crops_dir,
                 head_conf=head_conf_threshold,
                 head_iou=head_iou_threshold,
@@ -134,7 +130,7 @@ def run_crop_preparation(
                 crop_output_size=crop_output_size,
                 min_crop_side=min_crop_side,
             ): row["image_index"]
-            for _, row in selected_df.iterrows()
+            for row in selected_df.to_dict("records")
         }
 
         iterator = as_completed(futures)
@@ -227,8 +223,7 @@ def run_crop_preparation(
         "existing_crop_files": existing_crop_count,
         "all_successful_crops_exist": bool(existing_crop_count == expected_crop_count),
     }
-    with (reports_dir / "crop_file_verification.json").open("w", encoding="utf-8") as f:
-        json.dump(json_safe_value(verification), f, ensure_ascii=False, indent=2, allow_nan=False)
+    write_json(reports_dir / "crop_file_verification.json", verification)
 
     summary = {
         "run_id": run_id,
@@ -264,9 +259,7 @@ def run_crop_preparation(
         },
     }
 
-    summary_path = reports_dir / "summary.json"
-    with summary_path.open("w", encoding="utf-8") as f:
-        json.dump(json_safe_value(summary), f, ensure_ascii=False, indent=2, allow_nan=False)
+    summary_path = write_json(reports_dir / "summary.json", summary)
 
     return {
         "run_id": run_id,

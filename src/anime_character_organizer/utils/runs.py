@@ -3,7 +3,7 @@ Pipeline run directory discovery and resolution.
 """
 
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 from ..exceptions import RunNotFoundError
 from .paths import checked_path
@@ -79,3 +79,35 @@ def create_run_directory(project_dir: Union[str, Path], stage: str) -> Path:
         except FileExistsError:
             continue
     raise FileExistsError("Unable to allocate a unique pipeline run.")
+
+
+def init_stage_run(
+    project_dir: Union[str, Path],
+    stage: str,
+    subdirs: Iterable[str],
+) -> Tuple[Path, str, Dict[str, Path]]:
+    """Create a unique stage run directory and its standard subdirectories."""
+    run_dir = create_run_directory(project_dir, stage)
+    run_id = run_dir.name.removeprefix(f"{stage}_")
+    dirs: Dict[str, Path] = {}
+    for subdir in subdirs:
+        target = run_dir / subdir
+        target.mkdir(parents=True, exist_ok=True)
+        dirs[subdir] = target
+    return run_dir, run_id, dirs
+
+
+def resolve_previous_run(
+    project_dir: Union[str, Path],
+    previous_run_dir: Optional[Union[str, Path]],
+    stage_prefix: str,
+    required_relative_paths: Optional[List[Union[str, Path]]] = None,
+) -> Path:
+    """Resolve an explicit previous run directory or discover the latest valid run."""
+    if previous_run_dir is None:
+        return find_latest_run(
+            project_dir=project_dir,
+            stage_prefix=stage_prefix,
+            required_relative_paths=required_relative_paths,
+        )
+    return checked_path(previous_run_dir)

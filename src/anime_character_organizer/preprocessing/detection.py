@@ -3,7 +3,7 @@ Anime character head and person detection wrappers and selection heuristics.
 """
 
 import warnings
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from PIL import Image
 
@@ -42,29 +42,41 @@ def choose_best_detection(
     return max(detections, key=score_detection)
 
 
+def _run_detector_safe(
+    detector_attr: str,
+    image: Image.Image,
+    conf_threshold: float,
+    iou_threshold: float,
+) -> List[Tuple[Box, str, float]]:
+    """Invoke an imgutils.detect function safely, returning clamped non-empty boxes."""
+    try:
+        import imgutils.detect as imgutils_detect
+
+        detector: Callable[..., List[Tuple[Any, Any, float]]] = getattr(imgutils_detect, detector_attr)
+        raw_dets = detector(image, conf_threshold=conf_threshold, iou_threshold=iou_threshold)
+        width, height = image.size
+        results: List[Tuple[Box, str, float]] = []
+        for det in raw_dets:
+            clamped = clamp_box(det[0], width, height)
+            if box_area(clamped) > 0:
+                results.append((clamped, str(det[1]), float(det[2])))
+        return results
+    except Exception as exc:
+        warnings.warn(
+            f"Detector failed ({type(exc).__name__}): {exc}. Crop fallback requires review.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+        return []
+
+
 def detect_heads_safe(
     image: Image.Image,
     conf_threshold: float = 0.40,
     iou_threshold: float = 0.50,
 ) -> List[Tuple[Box, str, float]]:
     """Safe wrapper around imgutils.detect.detect_heads."""
-    try:
-        from imgutils.detect import detect_heads
-
-        raw_dets = detect_heads(image, conf_threshold=conf_threshold, iou_threshold=iou_threshold)
-        width, height = image.size
-        return [
-            (clamp_box(det[0], width, height), str(det[1]), float(det[2]))
-            for det in raw_dets
-            if box_area(clamp_box(det[0], width, height)) > 0
-        ]
-    except Exception as exc:
-        warnings.warn(
-            f"Detector failed ({type(exc).__name__}): {exc}. Crop fallback requires review.",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-        return []
+    return _run_detector_safe("detect_heads", image, conf_threshold, iou_threshold)
 
 
 def detect_persons_safe(
@@ -73,20 +85,4 @@ def detect_persons_safe(
     iou_threshold: float = 0.50,
 ) -> List[Tuple[Box, str, float]]:
     """Safe wrapper around imgutils.detect.detect_person."""
-    try:
-        from imgutils.detect import detect_person
-
-        raw_dets = detect_person(image, conf_threshold=conf_threshold, iou_threshold=iou_threshold)
-        width, height = image.size
-        return [
-            (clamp_box(det[0], width, height), str(det[1]), float(det[2]))
-            for det in raw_dets
-            if box_area(clamp_box(det[0], width, height)) > 0
-        ]
-    except Exception as exc:
-        warnings.warn(
-            f"Detector failed ({type(exc).__name__}): {exc}. Crop fallback requires review.",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-        return []
+    return _run_detector_safe("detect_person", image, conf_threshold, iou_threshold)

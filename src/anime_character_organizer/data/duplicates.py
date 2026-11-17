@@ -62,18 +62,20 @@ def find_exact_duplicates(valid_df: pd.DataFrame) -> pd.DataFrame:
 
     sha_counts = valid_df["sha256"].value_counts(dropna=True)
     duplicate_sha_values = set(sha_counts[sha_counts > 1].index)
+    if not duplicate_sha_values:
+        return pd.DataFrame(columns=EXACT_DUPLICATE_COLUMNS)
 
-    group_id = 0
-    for sha_value in sorted(duplicate_sha_values):
-        group = valid_df[valid_df["sha256"].eq(sha_value)].sort_values("relative_path").copy()
+    dup_df = valid_df[valid_df["sha256"].isin(duplicate_sha_values)].sort_values(["sha256", "relative_path"])
+    for group_id, (sha_value, group) in enumerate(dup_df.groupby("sha256", sort=True)):
         representative_path = group.iloc[0]["path"]
+        group_size = len(group)
 
-        for rank, (_, row) in enumerate(group.iterrows()):
+        for rank, row in enumerate(group.to_dict("records")):
             exact_duplicate_rows.append(
                 {
                     "exact_group_id": f"exact_{group_id:06d}",
                     "sha256": sha_value,
-                    "group_size": len(group),
+                    "group_size": group_size,
                     "is_representative": rank == 0,
                     "representative_path": representative_path,
                     "path": row["path"],
@@ -84,8 +86,6 @@ def find_exact_duplicates(valid_df: pd.DataFrame) -> pd.DataFrame:
                     "format": row.get("format"),
                 }
             )
-
-        group_id += 1
 
     return pd.DataFrame(exact_duplicate_rows, columns=EXACT_DUPLICATE_COLUMNS)
 
@@ -110,41 +110,29 @@ def find_perceptual_duplicates(
         return pd.DataFrame(columns=PERCEPTUAL_CANDIDATE_COLUMNS), pd.DataFrame(columns=PERCEPTUAL_GROUP_COLUMNS)
 
     phash_df["phash_int"] = phash_df["phash"].map(hash_hex_to_int)
-    items = list(zip(phash_df["path"].tolist(), phash_df["phash_int"].tolist()))
+    items = sorted(zip(phash_df["path"].tolist(), phash_df["phash_int"].tolist()), key=lambda pair: pair[0])
 
     def bk_distance(item_a: Tuple[str, int], item_b: Tuple[str, int]) -> int:
         return hamming_int(item_a[1], item_b[1])
 
     tree = BKTree(bk_distance)
     candidate_pairs: List[Dict[str, Any]] = []
-    seen_pairs = set()
 
-    tree_iter = tqdm(items, desc="Building pHash BK-tree") if show_progress else items
-    for item in tree_iter:
-        tree.add(item)
-
-    query_iter = tqdm(items, desc="Querying near-duplicate pHash candidates") if show_progress else items
-    for item in query_iter:
-        matches = tree.query(item, phash_threshold)
-        path_a, _ = item
-
-        for matched_item, distance in matches:
-            path_b, _ = matched_item
+    iterator = tqdm(items, desc="Indexing and querying pHash BK-tree") if show_progress else items
+    for item in iterator:
+        path_b, _ = item
+        for matched_item, distance in tree.query(item, phash_threshold):
+            path_a, _ = matched_item
             if path_a == path_b:
                 continue
-
-            pair = tuple(sorted([path_a, path_b]))
-            if pair in seen_pairs:
-                continue
-            seen_pairs.add(pair)
-
             candidate_pairs.append(
                 {
-                    "path_a": pair[0],
-                    "path_b": pair[1],
+                    "path_a": path_a,
+                    "path_b": path_b,
                     "phash_distance": int(distance),
                 }
             )
+        tree.add(item)
 
     perceptual_candidates_df = pd.DataFrame(candidate_pairs, columns=PERCEPTUAL_CANDIDATE_COLUMNS)
     if not candidate_pairs:

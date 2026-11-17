@@ -18,6 +18,9 @@ class AuditConfig:
     valid_extensions: Set[str] = field(default_factory=lambda: set(DEFAULT_VALID_EXTENSIONS))
     phash_threshold: int = 6
     max_workers: Optional[int] = None
+    max_images: Optional[int] = None
+    sample_strategy: str = "stratified"
+    random_seed: int = 42
 
     def __post_init__(self) -> None:
         validate_parameters(**vars(self))
@@ -147,6 +150,7 @@ def validate_parameters(**settings: object) -> None:
 
     positive = {
         "max_workers",
+        "max_images",
         "batch_size",
         "ccip_image_size",
         "min_crop_side",
@@ -175,6 +179,7 @@ def validate_parameters(**settings: object) -> None:
         "on_existing": {"error", "skip", "overwrite"},
         "primary_tagger": {"pixai", "wd14"},
         "cluster_selection_method": {"eom", "leaf"},
+        "sample_strategy": {"stratified", "first", "random"},
     }
     for key, value in settings.items():
         if key.endswith("_dir") and value is not None:

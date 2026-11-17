@@ -2,7 +2,6 @@
 Workflow orchestrator for Stage 4: HDBSCAN clustering and review diagnostics.
 """
 
-import json
 import platform
 import sys
 from pathlib import Path
@@ -23,8 +22,8 @@ from ..clustering.diagnostics import (
 from ..config import validate_parameters
 from ..exceptions import ConfigurationError
 from ..utils.paths import checked_path
-from ..utils.runs import create_run_directory, find_latest_run
-from ..utils.serialization import json_safe_value
+from ..utils.runs import init_stage_run, resolve_previous_run
+from ..utils.serialization import write_json
 from ..utils.time import now_iso
 from ..visualization.contact_sheet import create_contact_sheet
 from ..visualization.plots import plot_cluster_size_distribution, plot_probability_and_outlier_distributions
@@ -54,18 +53,16 @@ def run_clustering(
     validate_parameters(**locals())
     project_dir = checked_path(project_dir)
 
-    if previous_run_dir is None:
-        previous_run_dir = find_latest_run(
-            project_dir=project_dir,
-            stage_prefix="03_ccip_embeddings_*",
-            required_relative_paths=[
-                Path("reports") / "summary.json",
-                Path("arrays") / embedding_file_name,
-                Path("tables") / manifest_file_name,
-            ],
-        )
-    else:
-        previous_run_dir = checked_path(previous_run_dir)
+    previous_run_dir = resolve_previous_run(
+        project_dir=project_dir,
+        previous_run_dir=previous_run_dir,
+        stage_prefix="03_ccip_embeddings_*",
+        required_relative_paths=[
+            Path("reports") / "summary.json",
+            Path("arrays") / embedding_file_name,
+            Path("tables") / manifest_file_name,
+        ],
+    )
 
     embeddings_path = checked_path(previous_run_dir / "arrays" / embedding_file_name)
     manifest_path = checked_path(previous_run_dir / "tables" / manifest_file_name)
@@ -93,27 +90,17 @@ def run_clustering(
     if len(embeddings) < 2:
         raise ConfigurationError("At least two embeddings are needed for clustering.")
 
-    run_dir = create_run_directory(project_dir, "04_hdbscan_clustering")
-    run_id = run_dir.name.removeprefix("04_hdbscan_clustering_")
-    reports_dir = run_dir / "reports"
-    tables_dir = run_dir / "tables"
-    arrays_dir = run_dir / "arrays"
-    figures_dir = run_dir / "figures"
-    contact_sheets_dir = run_dir / "contact_sheets"
-    cluster_metadata_dir = run_dir / "cluster_metadata"
-    logs_dir = run_dir / "logs"
-
-    for d in [
-        run_dir,
-        reports_dir,
-        tables_dir,
-        arrays_dir,
-        figures_dir,
-        contact_sheets_dir,
-        cluster_metadata_dir,
-        logs_dir,
-    ]:
-        d.mkdir(parents=True, exist_ok=True)
+    run_dir, run_id, dirs = init_stage_run(
+        project_dir,
+        "04_hdbscan_clustering",
+        ["reports", "tables", "arrays", "figures", "contact_sheets", "cluster_metadata", "logs"],
+    )
+    reports_dir = dirs["reports"]
+    tables_dir = dirs["tables"]
+    arrays_dir = dirs["arrays"]
+    figures_dir = dirs["figures"]
+    contact_sheets_dir = dirs["contact_sheets"]
+    cluster_metadata_dir = dirs["cluster_metadata"]
 
     labels, probabilities, outlier_scores, backend_used = fit_hdbscan(
         embeddings=embeddings,
@@ -129,15 +116,6 @@ def run_clustering(
     cluster_manifest_df["hdbscan_probability"] = probabilities.copy()
     cluster_manifest_df["hdbscan_outlier_score"] = outlier_scores.copy()
     cluster_manifest_df["reassigned_from_noise"] = False
-    cluster_manifest_df["cluster_label"] = labels
-    cluster_manifest_df["cluster_probability"] = probabilities
-    cluster_manifest_df["outlier_score"] = outlier_scores
-
-    cluster_manifest_df, high_outlier_thresh = flag_cluster_review_items(
-        cluster_manifest_df=cluster_manifest_df,
-        low_prob_threshold=low_probability_threshold,
-        high_outlier_quantile=high_outlier_quantile,
-    )
 
     centroids = compute_cluster_centroids(embeddings, labels)
     distance_to_centroid = np.full(embeddings.shape[0], np.nan, dtype=np.float32)
@@ -145,45 +123,44 @@ def run_clustering(
         idx = np.where(labels == label)[0]
         distance_to_centroid[idx] = euclidean_distance_to_centroid(embeddings[idx], centroid).astype(np.float32)
 
-    cluster_manifest_df["distance_to_centroid"] = distance_to_centroid
-
-    # Centroid-based soft reassignment for noise points within distance threshold
+    # Vectorized chunked soft reassignment for noise points within distance threshold
     reassigned_count = 0
     if reassign_noise and len(centroids) > 0:
         noise_idx = np.where(labels == -1)[0]
         if len(noise_idx) > 0:
-            c_labels = np.array(list(centroids.keys()))
-            c_matrix = np.stack([centroids[lbl] for lbl in c_labels])
-            for n_i in noise_idx:
-                emb = embeddings[n_i].reshape(1, -1)
-                dists = np.linalg.norm(c_matrix - emb, axis=1)
-                best_idx = int(np.argmin(dists))
-                best_dist = float(dists[best_idx])
-                if best_dist <= max_reassign_distance:
-                    assigned_lbl = int(c_labels[best_idx])
-                    labels[n_i] = assigned_lbl
-                    prob_val = max(0.5, float(1.0 - best_dist))
-                    probabilities[n_i] = prob_val
-                    outlier_scores[n_i] = best_dist
-                    distance_to_centroid[n_i] = best_dist
-                    cluster_manifest_df.loc[n_i, "reassigned_from_noise"] = True
-                    cluster_manifest_df.loc[n_i, "cluster_label"] = assigned_lbl
-                    cluster_manifest_df.loc[n_i, "cluster_probability"] = prob_val
-                    cluster_manifest_df.loc[n_i, "outlier_score"] = best_dist
-                    cluster_manifest_df.loc[n_i, "distance_to_centroid"] = best_dist
-                    cluster_manifest_df.loc[n_i, "is_noise"] = False
-                    cluster_manifest_df.loc[n_i, "cluster_review_reason"] = "reassigned_from_noise"
-                    cluster_manifest_df.loc[n_i, "requires_manual_review"] = True
-                    cluster_manifest_df.loc[n_i, "cluster_folder_stub"] = f"cluster_{assigned_lbl:05d}_unknown"
-                    reassigned_count += 1
+            c_labels = np.array(list(centroids.keys()), dtype=int)
+            c_matrix = np.stack([centroids[int(lbl)] for lbl in c_labels]).astype(np.float32)
+            best_labels = np.full(len(noise_idx), -1, dtype=int)
+            best_dists = np.full(len(noise_idx), np.inf, dtype=np.float32)
 
-            if reassigned_count > 0:
+            for start in range(0, len(noise_idx), 512):
+                chunk_idx = noise_idx[start : start + 512]
+                dists = np.linalg.norm(embeddings[chunk_idx, None, :] - c_matrix[None, :, :], axis=2)
+                min_pos = np.argmin(dists, axis=1)
+                best_dists[start : start + len(chunk_idx)] = dists[np.arange(len(chunk_idx)), min_pos]
+                best_labels[start : start + len(chunk_idx)] = c_labels[min_pos]
+
+            accept = best_dists <= max_reassign_distance
+            if np.any(accept):
+                accepted_pos = noise_idx[accept]
+                assigned_dists = best_dists[accept]
+                labels[accepted_pos] = best_labels[accept]
+                probabilities[accepted_pos] = np.maximum(0.5, 1.0 - assigned_dists).astype(np.float32)
+                outlier_scores[accepted_pos] = assigned_dists
+                reassigned_count = int(len(accepted_pos))
+                cluster_manifest_df.loc[accepted_pos, "reassigned_from_noise"] = True
+
                 centroids = compute_cluster_centroids(embeddings, labels)
                 for label, centroid in centroids.items():
                     idx = np.where(labels == label)[0]
-                    final_distances = euclidean_distance_to_centroid(embeddings[idx], centroid).astype(np.float32)
-                    distance_to_centroid[idx] = final_distances
-                    cluster_manifest_df.loc[idx, "distance_to_centroid"] = final_distances
+                    distance_to_centroid[idx] = euclidean_distance_to_centroid(embeddings[idx], centroid).astype(
+                        np.float32
+                    )
+
+    cluster_manifest_df["cluster_label"] = labels
+    cluster_manifest_df["cluster_probability"] = probabilities
+    cluster_manifest_df["outlier_score"] = outlier_scores
+    cluster_manifest_df["distance_to_centroid"] = distance_to_centroid
 
     cluster_manifest_df, high_outlier_thresh = flag_cluster_review_items(
         cluster_manifest_df, low_probability_threshold, high_outlier_quantile
@@ -260,6 +237,7 @@ def run_clustering(
     )
 
     # Cluster contact sheets
+    grouped_clusters = {int(k): g for k, g in cluster_manifest_df.groupby("cluster_label", sort=False)}
     contact_sheet_rows = []
     eligible_clusters = (
         cluster_summary_df[(~cluster_summary_df["is_noise_cluster"]) & (cluster_summary_df["image_count"] >= 2)]
@@ -267,10 +245,10 @@ def run_clustering(
         .head(250)
     )
 
-    for _, crow in eligible_clusters.iterrows():
+    for crow in eligible_clusters.to_dict("records"):
         lbl = int(crow["cluster_label"])
         stub = crow["cluster_folder_stub"]
-        c_items = cluster_manifest_df[cluster_manifest_df["cluster_label"].eq(lbl)]
+        c_items = grouped_clusters[lbl]
         sampled = sample_representative_and_boundary_rows(c_items, 18, 6)
         cpaths = sampled["crop_path"].dropna().tolist()
         out_sheet = contact_sheets_dir / f"{stub}.jpg"
@@ -331,10 +309,10 @@ def run_clustering(
 
     # Cluster metadata files
     metadata_rows = []
-    for _, crow in cluster_summary_df.iterrows():
+    for crow in cluster_summary_df.to_dict("records"):
         lbl = int(crow["cluster_label"])
         stub = crow["cluster_folder_stub"]
-        c_items = cluster_manifest_df[cluster_manifest_df["cluster_label"].eq(lbl)]
+        c_items = grouped_clusters[lbl]
         meta = {
             "cluster_label": lbl,
             "cluster_folder_stub": stub,
@@ -369,9 +347,7 @@ def run_clustering(
             .head(25)
             .to_dict(orient="records"),
         }
-        meta_p = cluster_metadata_dir / f"{stub}.json"
-        with meta_p.open("w", encoding="utf-8") as f:
-            json.dump(json_safe_value(meta), f, ensure_ascii=False, indent=2, allow_nan=False)
+        meta_p = write_json(cluster_metadata_dir / f"{stub}.json", meta)
         metadata_rows.append({"cluster_label": lbl, "cluster_folder_stub": stub, "metadata_path": meta_p.as_posix()})
 
     metadata_index_df = pd.DataFrame(metadata_rows)
@@ -397,8 +373,7 @@ def run_clustering(
         "no_nan_labels": bool(not pd.Series(labels).isna().any()),
         "cluster_count_non_negative": bool(cluster_count >= 0),
     }
-    with (reports_dir / "consistency_checks.json").open("w", encoding="utf-8") as f:
-        json.dump(json_safe_value(checks), f, ensure_ascii=False, indent=2, allow_nan=False)
+    write_json(reports_dir / "consistency_checks.json", checks)
 
     summary = {
         "run_id": run_id,
@@ -446,9 +421,7 @@ def run_clustering(
         },
     }
 
-    summary_path = reports_dir / "summary.json"
-    with summary_path.open("w", encoding="utf-8") as f:
-        json.dump(json_safe_value(summary), f, ensure_ascii=False, indent=2, allow_nan=False)
+    summary_path = write_json(reports_dir / "summary.json", summary)
 
     return {
         "run_id": run_id,

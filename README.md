@@ -4,6 +4,16 @@ A local research pipeline that groups anime illustrations by visual similarity a
 
 Status: professionally organized with documented limitations. Local unit/integration checks and all seven notebooks pass with deterministic model substitutes. All seven also passed bounded execution with actual downloaded models on synthetic images. Character identity quality on representative anime data remains unvalidated. See the [audit report](docs/audit-report.md), [discovery plan](docs/discovery-plan.md), and [validation guide](docs/validation.md).
 
+## Quick start
+
+With `.env` configured (`cp .env.example .env` and set both directories), the whole pipeline runs with one command:
+
+```bash
+python -m pip install -e . && python scripts/run_pipeline.py --mode copy
+```
+
+Add `--max-images 50` to process only a representative (stratified) sample of the input, or `--with-tagging` to also propose character names.
+
 ## Workflow and contract
 
 1. **Audit:** discover images, verify decoding, compute SHA-256 and perceptual hashes, and identify duplicate candidates.
@@ -73,7 +83,7 @@ Notebook paths are independent of the launch directory:
 - `ANIME_PIPELINE_INPUT_DIR`: absolute notebook input directory; defaults to `input_images` beside the workspace.
 - `HF_HOME`: optional upstream model cache directory.
 
-CLI scripts use explicit arguments; they do not read notebook path variables. [.env.example](.env.example) documents examples; `.env` files are not automatically loaded. No application credentials are required.
+`scripts/run_pipeline.py` auto-loads `.env` (copy [.env.example](.env.example) to `.env`); explicit flags and already-exported variables take precedence. Other stage scripts use explicit arguments. No application credentials are required.
 
 Defaults such as HDBSCAN epsilon `0.50` and noise distance `0.55` are **uncalibrated project heuristics**. Lower noise rates are not evidence of better identity purity. Library tag acceptance defaults are score/share/weighted/margin `0.70/0.35/0.55/0.08`; naming notebooks retain visible experimental overrides `0.65/0.30/0.50/0.05`.
 

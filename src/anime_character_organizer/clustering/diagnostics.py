@@ -76,8 +76,7 @@ def calculate_cluster_summary(
     """Calculate aggregated diagnostic metrics per cluster."""
     rows: List[Dict[str, Any]] = []
 
-    for label in sorted(cluster_manifest_df["cluster_label"].unique()):
-        cdf = cluster_manifest_df[cluster_manifest_df["cluster_label"].eq(label)].copy()
+    for label, cdf in cluster_manifest_df.groupby("cluster_label", sort=True):
         if cdf.empty:
             continue
 
