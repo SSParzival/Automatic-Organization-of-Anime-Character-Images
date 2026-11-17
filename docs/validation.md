@@ -1,6 +1,6 @@
 # Validation and reproducibility
 
-This guide explains how to reproduce checks without accessing protected directories. Run commands from the repository root after installing `.[dev,notebook]`. The full audit findings and readiness boundaries are in [audit-report.md](audit-report.md); the original inventory and migration plan are in [discovery-plan.md](discovery-plan.md).
+This guide explains how to reproduce checks without accessing protected directories. Run commands from the repository root after installing `.[dev,notebook]`.
 
 ## Local checks
 

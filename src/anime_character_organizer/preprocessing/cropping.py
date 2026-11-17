@@ -115,9 +115,7 @@ def process_image_for_crop(
             x0 = y0 = x1 = y1 = 0
 
             if best_head is not None:
-                hx0, hy0, hx1, hy1 = clamp_box(
-                    expand_box(best_head[0], width, height, head_padding), width, height
-                )
+                hx0, hy0, hx1, hy1 = clamp_box(expand_box(best_head[0], width, height, head_padding), width, height)
                 if (hx1 - hx0) >= min_crop_side and (hy1 - hy0) >= min_crop_side:
                     x0, y0, x1, y1 = hx0, hy0, hx1, hy1
                     selected_type = "head"
@@ -144,9 +142,7 @@ def process_image_for_crop(
                         selected_type = "full_image_small_detection_fallback"
                 else:
                     x0, y0, x1, y1 = 0, 0, width, height
-                    selected_type = (
-                        "full_image_small_detection_fallback" if best_head is not None else "full_image"
-                    )
+                    selected_type = "full_image_small_detection_fallback" if best_head is not None else "full_image"
             else:
                 record["person_detections_json"] = "[]"
 

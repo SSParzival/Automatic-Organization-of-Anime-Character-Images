@@ -219,10 +219,7 @@ def audit_images(
     worker_count = min(max_workers, max(1, len(candidate_files)))
 
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
-        futures = {
-            executor.submit(inspect_image, path, checked_input_dir): path
-            for path in candidate_files
-        }
+        futures = {executor.submit(inspect_image, path, checked_input_dir): path for path in candidate_files}
         iterator = as_completed(futures)
         if show_progress:
             iterator = tqdm(iterator, total=len(futures), desc="Validating and hashing images")

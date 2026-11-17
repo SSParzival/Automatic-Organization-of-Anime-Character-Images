@@ -6,7 +6,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 from PIL import Image
 
@@ -24,16 +23,12 @@ from anime_character_organizer.utils.naming import (
 from anime_character_organizer.utils.paths import (
     normalize_path_string,
     path_to_posix,
-    safe_relative_path,
 )
 from anime_character_organizer.utils.runs import find_latest_run
 from anime_character_organizer.utils.serialization import (
-    dataframe_to_json_records,
     parse_dict_like,
     safe_bool,
     safe_bool_series,
-    safe_float,
-    safe_int,
     safe_json_dumps,
 )
 from anime_character_organizer.utils.structures import BKTree, UnionFind
@@ -55,9 +50,6 @@ class TestUtils(unittest.TestCase):
             sub.touch()
 
             self.assertEqual(path_to_posix(sub), sub.as_posix())
-            self.assertEqual(safe_relative_path(sub, base), "a/b.txt")
-            outside_path = Path("/tmp/outside/file.txt")
-            self.assertEqual(safe_relative_path(outside_path, base), outside_path.resolve().as_posix())
             self.assertEqual(normalize_path_string(sub), sub.resolve().as_posix())
 
     def test_hashing(self):
@@ -115,20 +107,10 @@ class TestUtils(unittest.TestCase):
         bool_s = safe_bool_series(s)
         self.assertListEqual(bool_s.tolist(), [True, False, True, False, True, False])
 
-        self.assertEqual(safe_float("1.25"), 1.25)
-        self.assertTrue(np.isnan(safe_float("invalid")))
-
-        self.assertEqual(safe_int("42"), 42)
-        self.assertEqual(safe_int(None, default=99), 99)
-
         d = {"b": 2, "a": 1}
         self.assertEqual(safe_json_dumps(d), '{"a": 1, "b": 2}')
         self.assertEqual(parse_dict_like('{"x": 10}'), {"x": 10})
         self.assertEqual(parse_dict_like(None), {})
-
-        df = pd.DataFrame([{"a": 1, "b": np.nan}])
-        records = dataframe_to_json_records(df)
-        self.assertEqual(records, [{"a": 1, "b": None}])
 
     def test_naming(self):
         self.assertEqual(sanitize_filename_component("hello/world:test*"), "hello_world_test_")

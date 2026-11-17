@@ -2,7 +2,6 @@
 Workflow orchestrator for Stage 2: Representative set selection and crop preparation.
 """
 
-import os
 import platform
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -109,7 +108,9 @@ def run_crop_preparation(
         raise ConfigurationError("No images were selected for detection.")
 
     if max_workers is None:
-        max_workers = max(1, min(8, (os.cpu_count() or 2)))
+        # Detector ONNX sessions already use every core; extra Python workers oversubscribe
+        # the CPU and measured 2x slower, so default to a single worker.
+        max_workers = 1
 
     crop_records: List[Dict[str, Any]] = []
 

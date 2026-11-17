@@ -16,19 +16,6 @@ def path_to_posix(path: Union[str, Path]) -> str:
     return Path(path).as_posix()
 
 
-def safe_relative_path(path: Union[str, Path], base_dir: Union[str, Path]) -> str:
-    """
-    Compute a relative path from base_dir if possible.
-    If path is not under base_dir, return normalized POSIX path.
-    """
-    path = checked_path(path)
-    base_dir = checked_path(base_dir)
-    try:
-        return path.relative_to(base_dir).as_posix()
-    except ValueError:
-        return path.as_posix()
-
-
 def checked_path(value: Union[str, Path], *, allow_leaf_symlink: bool = False) -> Path:
     """Return an absolute path without following symlinks or accessing sandbox.
 

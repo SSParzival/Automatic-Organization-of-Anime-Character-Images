@@ -58,9 +58,7 @@ def run_embedding_extraction(
     if "crop_path" not in crop_df.columns or "status" not in crop_df.columns:
         raise ConfigurationError("Crop manifest missing required columns 'crop_path' or 'status'.")
 
-    run_dir, run_id, dirs = init_stage_run(
-        project_dir, "03_ccip_embeddings", ["reports", "tables", "arrays", "logs"]
-    )
+    run_dir, run_id, dirs = init_stage_run(project_dir, "03_ccip_embeddings", ["reports", "tables", "arrays", "logs"])
     reports_dir = dirs["reports"]
     tables_dir = dirs["tables"]
     arrays_dir = dirs["arrays"]
