@@ -1,5 +1,9 @@
 """All six real workflows exercised with deterministic model substitutes."""
 
+import json
+from pathlib import Path
+from unittest.mock import patch
+
 import pytest
 from PIL import Image
 
@@ -12,7 +16,7 @@ from anime_character_organizer.exceptions import (
 from anime_character_organizer.workflows.materialize import run_folder_materialization
 from anime_character_organizer.workflows.naming import run_cluster_naming
 from anime_character_organizer.workflows.pipeline import run_full_pipeline
-from tests.fixtures.model_substitutes import install_substitutes
+from tests.fixtures.model_substitutes import image_index, install_substitutes
 
 
 @pytest.fixture
@@ -23,54 +27,93 @@ def completed_pipeline(tmp_path):
         Image.new("RGB", (96, 96), (i * 20, 50, 100)).save(source / f"image{i:02d}.png")
     patches = install_substitutes()
     try:
-        return run_full_pipeline(
-            source, tmp_path / "workspace", run_tagging=True, materialization_mode="copy", show_progress=False
-        )
+        return run_full_pipeline(source, tmp_path / "workspace", materialization_mode="copy", show_progress=False)
     finally:
         for handle in patches:
             handle.stop()
 
 
-def test_all_six_workflows_materialize_and_name(completed_pipeline):
+def folder_contents(output_dir):
+    return {
+        folder.name: len([f for f in folder.iterdir() if f.suffix == ".png"])
+        for folder in Path(output_dir).iterdir()
+        if folder.is_dir()
+    }
+
+
+def test_pipeline_always_names_every_folder(completed_pipeline):
     result = completed_pipeline
-    assert list(result) == ["audit", "crop", "embed", "cluster", "materialize", "naming"]
+    assert list(result) == ["audit", "crop", "embed", "cluster", "naming", "materialize"]
     assert result["embed"]["normalized_embeddings"].shape == (10, 8)
     assert result["materialize"]["validation_df"]["is_valid"].all()
-    assert result["naming"]["summary"]["accepted_character_names"] == 2
-    assert (result["naming"]["run_dir"] / "tables/named_materialization_validation.csv").exists()
-    assert len(result["naming"]["named_materialization_df"]) == 10
+    assert result["naming"]["summary"]["clusters_named"] == 2
+    assert result["naming"]["summary"]["images_needing_review"] == 0
+    assert folder_contents(result["materialize"]["final_output_dir"]) == {"character_a": 5, "character_b": 5}
+    info = json.loads((result["materialize"]["final_output_dir"] / "character_a/_folder_info.json").read_text())
+    assert info["character_name"] == "character_a"
+    assert info["naming_sources"] == {"cluster_vote": 5}
+
+
+def mixed_tags(path):
+    """Cluster b mixes four characters and one unknown, so no name wins its vote."""
+    index = image_index(path)
+    if index < 5:
+        return {"character_a": 0.95}
+    return {5: {"character_b": 0.9}, 6: {"character_c": 0.9}, 7: {"character_d": 0.9}, 8: {"character_e": 0.9}}.get(
+        index, {}
+    )
+
+
+def test_unnamed_cluster_is_split_by_image_tags(completed_pipeline, tmp_path):
+    workspace = tmp_path / "other"
+    with (
+        patch("anime_character_organizer.workflows.naming.extract_character_tags", side_effect=mixed_tags),
+        patch("anime_character_organizer.workflows.naming.load_character_tagger"),
+    ):
+        naming = run_cluster_naming(
+            workspace, completed_pipeline["cluster"]["run_dir"], max_images_per_cluster_to_tag=3, show_progress=False
+        )
+    # Three samples per cluster, plus the two untagged images of the rejected cluster
+    assert naming["summary"]["total_tagged_images"] == 8
+    assert naming["summary"]["clusters_named"] == 1
+    output = run_folder_materialization(workspace, naming["run_dir"], materialization_mode="copy", show_progress=False)
+    assert folder_contents(output["final_output_dir"]) == {
+        "character_a": 5,
+        "character_b": 1,
+        "character_c": 1,
+        "character_d": 1,
+        "character_e": 1,
+        "_needs_review": 1,
+    }
+    assert not any("cluster_" in folder for folder in folder_contents(output["final_output_dir"]))
 
 
 def test_naming_missing_crops_is_actionable(completed_pipeline, tmp_path):
     for path in completed_pipeline["crop"]["crops_df"]["crop_path"]:
-        from pathlib import Path
-
         Path(path).unlink()
     with pytest.raises(InvalidImageError, match="existing crop"):
-        run_cluster_naming(
-            tmp_path / "other", completed_pipeline["cluster"]["run_dir"], create_named_output=False, show_progress=False
-        )
+        run_cluster_naming(tmp_path / "other", completed_pipeline["cluster"]["run_dir"], show_progress=False)
 
 
 def test_naming_all_model_failures_are_not_success(completed_pipeline, tmp_path):
-    from unittest.mock import patch
-
-    with patch(
-        "anime_character_organizer.workflows.naming.extract_tags_with_fallback",
-        return_value=(None, "ModelUnavailable", "synthetic outage"),
+    with (
+        patch(
+            "anime_character_organizer.workflows.naming.extract_character_tags", side_effect=RuntimeError("bad image")
+        ),
+        patch("anime_character_organizer.workflows.naming.load_character_tagger"),
     ):
         with pytest.raises(TaggingError, match="All tagger"):
-            run_cluster_naming(
-                tmp_path / "other",
-                completed_pipeline["cluster"]["run_dir"],
-                create_named_output=False,
-                show_progress=False,
-            )
+            run_cluster_naming(tmp_path / "other", completed_pipeline["cluster"]["run_dir"], show_progress=False)
+
+
+def test_unavailable_tagger_fails_before_creating_a_run(completed_pipeline, tmp_path):
+    with patch("anime_character_organizer.workflows.naming.load_character_tagger", side_effect=OSError("offline")):
+        with pytest.raises(TaggingError, match="Could not load"):
+            run_cluster_naming(tmp_path / "other", completed_pipeline["cluster"]["run_dir"], show_progress=False)
+    assert not (tmp_path / "other" / "runs").exists()
 
 
 def test_materialization_failure_is_not_success(completed_pipeline, tmp_path):
-    from unittest.mock import patch
-
     failure = {
         "status": "error",
         "operation_used": "copy",
@@ -79,9 +122,7 @@ def test_materialization_failure_is_not_success(completed_pipeline, tmp_path):
     }
     with patch("anime_character_organizer.workflows.materialize.materialize_one_file", return_value=failure):
         with pytest.raises(MaterializationError, match="incomplete"):
-            run_folder_materialization(
-                tmp_path / "other", completed_pipeline["cluster"]["run_dir"], show_progress=False
-            )
+            run_folder_materialization(tmp_path / "other", completed_pipeline["naming"]["run_dir"], show_progress=False)
 
 
 def test_existing_output_is_preserved(completed_pipeline, tmp_path):
@@ -91,7 +132,7 @@ def test_existing_output_is_preserved(completed_pipeline, tmp_path):
     marker.write_text("user artifact")
     with pytest.raises(ConfigurationError, match="new or empty"):
         run_folder_materialization(
-            tmp_path / "other", completed_pipeline["cluster"]["run_dir"], final_output_dir=output, show_progress=False
+            tmp_path / "other", completed_pipeline["naming"]["run_dir"], final_output_dir=output, show_progress=False
         )
     assert marker.read_text() == "user artifact"
 
@@ -100,13 +141,11 @@ def test_existing_output_is_preserved(completed_pipeline, tmp_path):
 def test_materialization_workflow_supports_all_documented_modes(completed_pipeline, tmp_path, mode):
     output = run_folder_materialization(
         tmp_path / "mode_workspace",
-        completed_pipeline["cluster"]["run_dir"],
+        completed_pipeline["naming"]["run_dir"],
         materialization_mode=mode,
         show_progress=False,
     )
     assert output["validation_df"]["is_valid"].all()
     assert len(output["result_df"]) == 10
-    from pathlib import Path
-
     for path in output["plan_df"]["destination_path"]:
         assert Path(path).exists()

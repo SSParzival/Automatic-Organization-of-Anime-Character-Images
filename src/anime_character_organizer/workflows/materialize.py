@@ -1,9 +1,8 @@
 """
-Workflow orchestrator for Stage 5: Non-destructive folder materialization.
+Workflow orchestrator for Stage 6: Non-destructive materialization of the character folders.
 """
 
 import json
-import shutil
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
@@ -15,6 +14,7 @@ from ..exceptions import ConfigurationError, MaterializationError
 from ..materialization.operations import materialize_one_file
 from ..materialization.planner import build_materialization_plan
 from ..materialization.validation import validate_materialized_files
+from ..tagging.renaming import REVIEW_FOLDER
 from ..utils.naming import sanitize_folder_name
 from ..utils.paths import checked_path, ensure_empty_output_dir, normalize_path_string
 from ..utils.runs import create_run_directory, find_latest_run
@@ -31,14 +31,13 @@ def run_folder_materialization(
     allow_hardlink_fallback_to_copy: bool = True,
     on_existing: str = "error",
     source_column: str = "source_path",
-    create_cluster_metadata_files: bool = True,
+    create_folder_info_files: bool = True,
     create_folder_manifest_files: bool = True,
     create_output_readme: bool = True,
-    copy_cluster_contact_sheets_to_output: bool = True,
     show_progress: bool = True,
 ) -> Dict[str, Any]:
     """
-    Execute complete Stage 5 folder materialization workflow.
+    Build one folder per character from the original images, following the naming stage's assignment.
     """
     validate_parameters(**locals())
     project_dir = checked_path(project_dir)
@@ -46,32 +45,36 @@ def run_folder_materialization(
     if previous_run_dir is None:
         previous_run_dir = find_latest_run(
             project_dir=project_dir,
-            stage_prefix="04_hdbscan_clustering_*",
+            stage_prefix="05_cluster_naming_*",
             required_relative_paths=[
                 Path("reports") / "summary.json",
-                Path("tables") / "folder_assignment_manifest.csv",
-                Path("tables") / "cluster_summary.csv",
+                Path("tables") / "named_folder_assignment.csv",
             ],
         )
     else:
         previous_run_dir = checked_path(previous_run_dir)
 
-    assignment_path = checked_path(previous_run_dir / "tables" / "folder_assignment_manifest.csv")
-    summary_path_in = checked_path(previous_run_dir / "tables" / "cluster_summary.csv")
-
+    assignment_path = checked_path(previous_run_dir / "tables" / "named_folder_assignment.csv")
     if not assignment_path.exists():
-        raise ConfigurationError(f"Required folder assignment manifest missing: {assignment_path}")
+        raise ConfigurationError(f"Required named folder assignment missing: {assignment_path}")
 
     folder_assignment_df = pd.read_csv(assignment_path)
     require_columns(
         folder_assignment_df,
-        {source_column, "proposed_folder", "embedding_row", "cluster_label", "requires_manual_review"},
-        "Folder assignment manifest",
+        {
+            source_column,
+            "named_folder",
+            "character_name",
+            "naming_source",
+            "embedding_row",
+            "cluster_label",
+            "requires_manual_review",
+        },
+        "Named folder assignment",
     )
-    cluster_summary_df = pd.read_csv(summary_path_in) if summary_path_in.exists() else pd.DataFrame()
 
-    run_dir = create_run_directory(project_dir, "05_folder_materialization")
-    run_id = run_dir.name.removeprefix("05_folder_materialization_")
+    run_dir = create_run_directory(project_dir, "06_folder_materialization")
+    run_id = run_dir.name.removeprefix("06_folder_materialization_")
     reports_dir = run_dir / "reports"
     tables_dir = run_dir / "tables"
     logs_dir = run_dir / "logs"
@@ -85,7 +88,7 @@ def run_folder_materialization(
 
     assignment_df = folder_assignment_df.copy()
     assignment_df[source_column] = assignment_df[source_column].map(normalize_path_string)
-    assignment_df["proposed_folder"] = assignment_df["proposed_folder"].map(
+    assignment_df["named_folder"] = assignment_df["named_folder"].map(
         lambda v: sanitize_folder_name(v, fallback="_needs_review")
     )
     assignment_df["requires_manual_review"] = assignment_df["requires_manual_review"].map(safe_bool)
@@ -98,7 +101,7 @@ def run_folder_materialization(
         raise FileNotFoundError(f"Missing source files detected before materialization: {missing_p}")
 
     assignment_df = assignment_df.sort_values(
-        ["proposed_folder", "cluster_label", "embedding_row"],
+        ["named_folder", "cluster_label", "embedding_row"],
         ascending=[True, True, True],
     ).reset_index(drop=True)
 
@@ -107,7 +110,7 @@ def run_folder_materialization(
         assignment_df=assignment_df,
         output_dir=final_output_dir,
         source_column=source_column,
-        folder_column="proposed_folder",
+        folder_column="named_folder",
     )
     plan_path = tables_dir / "materialization_plan.csv"
     materialization_plan_df.to_csv(plan_path, index=False)
@@ -137,7 +140,7 @@ def run_folder_materialization(
                 "embedding_row": row["embedding_row"],
                 "source_path": src.as_posix(),
                 "destination_path": dest.as_posix(),
-                "proposed_folder": row["proposed_folder"],
+                "named_folder": row["named_folder"],
                 "cluster_label": row.get("cluster_label"),
                 "status": res["status"],
                 "operation_used": res["operation_used"],
@@ -160,26 +163,27 @@ def run_folder_materialization(
         raise MaterializationError(f"Materialization is incomplete; inspect {validation_path}.")
 
     # Create per-folder manifests, metadata, contact sheets
-    unique_folders = materialization_plan_df["proposed_folder"].unique()
+    unique_folders = materialization_plan_df["named_folder"].unique()
     for folder_name in unique_folders:
         folder_dir = final_output_dir / folder_name
-        folder_rows = materialization_plan_df[materialization_plan_df["proposed_folder"].eq(folder_name)]
+        folder_rows = materialization_plan_df[materialization_plan_df["named_folder"].eq(folder_name)]
 
         if create_folder_manifest_files:
             folder_manifest_path = folder_dir / "_folder_manifest.csv"
             folder_rows.to_csv(folder_manifest_path, index=False)
 
-        if create_cluster_metadata_files and not cluster_summary_df.empty:
-            label_val = folder_rows["cluster_label"].iloc[0]
-            summary_match = cluster_summary_df[cluster_summary_df["cluster_label"].eq(label_val)]
+        if create_folder_info_files:
             info = {
                 "folder_name": folder_name,
-                "cluster_label": int(label_val),
+                "character_name": folder_rows["character_name"].dropna().iloc[0]
+                if folder_rows["character_name"].notna().any()
+                else None,
                 "image_count": len(folder_rows),
-                "summary": summary_match.to_dict(orient="records")[0] if not summary_match.empty else {},
+                "naming_sources": folder_rows["naming_source"].value_counts().to_dict(),
+                "cluster_labels": sorted(int(v) for v in folder_rows["cluster_label"].unique()),
                 "created_at": now_iso(),
             }
-            with (folder_dir / "_cluster_info.json").open("w", encoding="utf-8") as f:
+            with (folder_dir / "_folder_info.json").open("w", encoding="utf-8") as f:
                 json.dump(json_safe_value(info), f, ensure_ascii=False, indent=2, allow_nan=False)
 
         # Contact sheet per folder
@@ -187,15 +191,6 @@ def run_folder_materialization(
         create_contact_sheet(
             dest_paths, folder_dir / "_contact_sheet.jpg", title=f"{folder_name} | n={len(folder_rows)}"
         )
-
-    # Copy clustering contact sheets if requested
-    if copy_cluster_contact_sheets_to_output:
-        prev_sheets_dir = checked_path(previous_run_dir / "contact_sheets")
-        if prev_sheets_dir.exists():
-            out_sheets_dir = final_output_dir / "_clustering_contact_sheets"
-            out_sheets_dir.mkdir(parents=True, exist_ok=True)
-            for sheet_file in prev_sheets_dir.glob("*.jpg"):
-                shutil.copy2(checked_path(sheet_file), checked_path(out_sheets_dir / sheet_file.name))
 
     # Global materialization index
     global_index_path = final_output_dir / "_global_materialization_index.csv"
@@ -206,14 +201,13 @@ def run_folder_materialization(
         readme_lines = [
             "# Anime Organized Image Output",
             "",
-            f"Generated on {now_iso()} by Stage 5 materialization workflow.",
+            f"Generated on {now_iso()} by the folder materialization stage.",
             "",
             "## Structure",
-            "- Each subdirectory contains images grouped by character identity.",
-            "- Folders with `_review` require human inspection.",
-            "- `_needs_review_noise` contains images that could not be assigned confidently.",
+            "- Each subdirectory is named after the character its images show.",
+            f"- `{REVIEW_FOLDER}` contains images without a confident character name.",
             "- `_global_materialization_index.csv` indexes every materialized image.",
-            "- Inside each folder, `_folder_manifest.csv` records source locations and metadata.",
+            "- Inside each folder, `_folder_manifest.csv` records source locations and naming evidence.",
             "",
             f"Total images organized: {len(materialization_plan_df)} across {len(unique_folders)} folders.",
         ]
@@ -221,7 +215,7 @@ def run_folder_materialization(
             f.write("\n".join(readme_lines) + "\n")
 
     folder_counts_df = (
-        materialization_plan_df.groupby("proposed_folder")
+        materialization_plan_df.groupby("named_folder")
         .size()
         .reset_index(name="image_count")
         .sort_values("image_count", ascending=False)

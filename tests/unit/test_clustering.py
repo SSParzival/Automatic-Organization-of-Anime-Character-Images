@@ -124,7 +124,7 @@ class TestClustering(unittest.TestCase):
         # Should identify 2 clusters without noise
         self.assertEqual(len(set(labels) - {-1}), 2)
 
-    def test_separate_review_folders_toggle(self):
+    def test_review_members_stay_with_their_cluster(self):
         df = pd.DataFrame(
             {
                 "embedding_row": [0, 1],
@@ -139,15 +139,10 @@ class TestClustering(unittest.TestCase):
             }
         )
 
-        # By default (separate_review_folders=False), both stay in unified cluster folder
-        unified = build_folder_assignment_manifest(df, separate_review_folders=False)
-        self.assertEqual(unified.iloc[0]["proposed_folder"], "cluster_00000_unknown")
-        self.assertEqual(unified.iloc[1]["proposed_folder"], "cluster_00000_unknown")
-
-        # When separate_review_folders=True, review items get _review suffix
-        split = build_folder_assignment_manifest(df, separate_review_folders=True)
-        self.assertEqual(split.iloc[0]["proposed_folder"], "cluster_00000_unknown")
-        self.assertEqual(split.iloc[1]["proposed_folder"], "cluster_00000_unknown_review")
+        # Review flags are recorded, never used to split a cluster into another folder
+        unified = build_folder_assignment_manifest(df)
+        self.assertEqual(unified["proposed_folder"].tolist(), ["cluster_00000_unknown"] * 2)
+        self.assertEqual(unified.iloc[1]["assignment_category"], "needs_review_cluster_member")
 
     def test_noise_reassignment_updates_all_final_centroid_distances(self):
         embeddings = np.array([[1.0, 0.0], [0.9, 0.1], [0.8, 0.2]], dtype=np.float32)

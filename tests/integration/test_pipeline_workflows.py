@@ -14,6 +14,8 @@ from anime_character_organizer.workflows.audit import run_dataset_audit
 from anime_character_organizer.workflows.cluster import run_clustering
 from anime_character_organizer.workflows.crop import run_crop_preparation
 from anime_character_organizer.workflows.materialize import run_folder_materialization
+from anime_character_organizer.workflows.naming import run_cluster_naming
+from tests.fixtures.model_substitutes import synthetic_tags
 
 
 class TestPipelineWorkflowsIntegration(unittest.TestCase):
@@ -37,7 +39,9 @@ class TestPipelineWorkflowsIntegration(unittest.TestCase):
 
     @patch("anime_character_organizer.preprocessing.cropping.detect_heads_safe", return_value=[])
     @patch("anime_character_organizer.preprocessing.cropping.detect_persons_safe", return_value=[])
-    def test_audit_crop_cluster_materialize_pipeline(self, _persons, _heads):
+    @patch("anime_character_organizer.workflows.naming.load_character_tagger")
+    @patch("anime_character_organizer.workflows.naming.extract_character_tags", side_effect=synthetic_tags)
+    def test_audit_crop_cluster_name_materialize_pipeline(self, _tags, _tagger, _persons, _heads):
         # 1. Run Stage 1 Audit
         audit_res = run_dataset_audit(
             input_dir=self.input_dir,
@@ -88,10 +92,18 @@ class TestPipelineWorkflowsIntegration(unittest.TestCase):
         self.assertTrue(cluster_res["run_dir"].exists())
         self.assertEqual(len(cluster_res["cluster_manifest_df"]), 10)
 
-        # 5. Run Stage 5 Materialization (using copy mode to be safe across filesystems)
-        mat_res = run_folder_materialization(
+        # 5. Run Stage 5 Naming
+        naming_res = run_cluster_naming(
             project_dir=self.project_dir,
             previous_run_dir=cluster_res["run_dir"],
+            show_progress=False,
+        )
+        self.assertEqual(len(naming_res["named_assignment_df"]), 10)
+
+        # 6. Run Stage 6 Materialization (using copy mode to be safe across filesystems)
+        mat_res = run_folder_materialization(
+            project_dir=self.project_dir,
+            previous_run_dir=naming_res["run_dir"],
             materialization_mode="copy",
             show_progress=False,
         )
@@ -101,6 +113,8 @@ class TestPipelineWorkflowsIntegration(unittest.TestCase):
         self.assertTrue(mat_res["validation_df"]["is_valid"].all())
         self.assertTrue((mat_res["final_output_dir"] / "README.md").exists())
         self.assertTrue((mat_res["final_output_dir"] / "_global_materialization_index.csv").exists())
+        folders = {p.name for p in mat_res["final_output_dir"].iterdir() if p.is_dir()}
+        self.assertEqual(folders, {"character_a", "character_b"})
 
 
 if __name__ == "__main__":

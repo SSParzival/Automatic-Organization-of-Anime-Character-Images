@@ -1,4 +1,4 @@
-"""Deterministic offline model substitutes for notebook and workflow smoke tests.
+"""Deterministic offline model substitutes for workflow tests.
 
 These vectors and tags are fixtures, not predictions or quality measurements.
 """
@@ -9,9 +9,13 @@ from unittest.mock import patch
 import numpy as np
 
 
-def synthetic_feature(path, model=None, size=None):
+def image_index(path):
     match = re.search(r"img_(\d+)", str(path))
-    index = int(match.group(1)) if match else 0
+    return int(match.group(1)) if match else 0
+
+
+def synthetic_feature(path, model=None, size=None):
+    index = image_index(path)
     center = np.array([1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
     if index >= 5:
         center = -center
@@ -25,8 +29,9 @@ def synthetic_embeddings(crop_paths, **kwargs):
     ]
 
 
-def synthetic_tags(*args, **kwargs):
-    return {"tagger": "synthetic", "character_tags": {"fixture_character": 0.95}, "general_tags": {}}, None, None
+def synthetic_tags(path):
+    """Images 0-4 show character_a and images 5-9 character_b, matching the two embedding groups."""
+    return {"character_a": 0.95} if image_index(path) < 5 else {"character_b": 0.90, "character_a": 0.30}
 
 
 def install_substitutes():
@@ -36,7 +41,8 @@ def install_substitutes():
         patch("anime_character_organizer.preprocessing.cropping.detect_persons_safe", return_value=[]),
         patch("anime_character_organizer.workflows.embed.warmup_ccip_model", side_effect=synthetic_feature),
         patch("anime_character_organizer.workflows.embed.extract_all_embeddings", side_effect=synthetic_embeddings),
-        patch("anime_character_organizer.workflows.naming.extract_tags_with_fallback", side_effect=synthetic_tags),
+        patch("anime_character_organizer.workflows.naming.load_character_tagger"),
+        patch("anime_character_organizer.workflows.naming.extract_character_tags", side_effect=synthetic_tags),
     ]
     for handle in patches:
         handle.start()

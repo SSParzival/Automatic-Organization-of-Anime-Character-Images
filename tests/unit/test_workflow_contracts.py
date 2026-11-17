@@ -7,7 +7,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from anime_character_organizer.config import AuditConfig, EmbeddingConfig, TaggingConfig, validate_parameters
+from anime_character_organizer.config import (
+    AuditConfig,
+    EmbeddingConfig,
+    MaterializationConfig,
+    TaggingConfig,
+    validate_parameters,
+)
 from anime_character_organizer.exceptions import ConfigurationError
 from anime_character_organizer.preprocessing.detection import detect_heads_safe
 from anime_character_organizer.utils.paths import checked_path
@@ -26,7 +32,8 @@ from anime_character_organizer.workflows.cluster import run_clustering
         {"phash_threshold": 65},
         {"max_reassign_distance": float("nan")},
         {"min_name_share": 1.1},
-        {"create_named_output": True, "create_rename_plan": False},
+        {"min_character_score": -0.1},
+        {"max_images_per_cluster_to_tag": 0},
         {"manifest_file_name": "../table.csv"},
     ],
 )
@@ -39,12 +46,18 @@ def test_dataclass_defaults_match_public_functions(tmp_path):
     import inspect
 
     from anime_character_organizer.workflows.embed import run_embedding_extraction
+    from anime_character_organizer.workflows.materialize import run_folder_materialization
     from anime_character_organizer.workflows.naming import run_cluster_naming
 
-    for config, function in [(EmbeddingConfig(), run_embedding_extraction), (TaggingConfig(), run_cluster_naming)]:
+    for config, function in [
+        (EmbeddingConfig(), run_embedding_extraction),
+        (TaggingConfig(), run_cluster_naming),
+        (MaterializationConfig(), run_folder_materialization),
+    ]:
         defaults = inspect.signature(function).parameters
         for key, value in vars(config).items():
-            if key in defaults and key != "project_dir":
+            assert key in defaults
+            if key != "project_dir":
                 assert value == defaults[key].default
     with pytest.raises(ConfigurationError):
         AuditConfig(tmp_path, phash_threshold=-1)
@@ -158,3 +171,14 @@ def test_sklearn_fallback_preserves_min_samples_convention():
         _, _, _, backend = fit_hdbscan(np.ones((4, 3)), min_samples=1)
     assert backend == "sklearn"
     assert factory.call_args.kwargs["min_samples"] == 2
+
+
+def test_pipeline_releases_imgutils_model_caches_before_tagging():
+    from imgutils.generic import yolo
+    from imgutils.metrics import ccip
+
+    from anime_character_organizer.workflows.pipeline import release_imgutils_models
+
+    release_imgutils_models()
+    for cached in (yolo._open_models_for_repo_id, ccip._open_feat_model, ccip._open_metric_model):
+        assert cached.cache_info().currsize == 0

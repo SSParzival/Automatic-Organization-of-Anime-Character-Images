@@ -1,69 +1,50 @@
 """
-Folder rename planning based on accepted semantic character naming.
+Character folder assignment: cluster votes first, then confident per-image tags; the rest goes to review.
 """
 
-from typing import Tuple
-
+import numpy as np
 import pandas as pd
 
-from ..utils.naming import sanitize_filename_component
-from ..utils.serialization import safe_bool
+from ..utils.naming import sanitize_folder_name
+from ..utils.serialization import parse_dict_like
+from .aggregation import decide_image_name
+
+REVIEW_FOLDER = "_needs_review"
 
 
-def build_folder_rename_plan(
-    folder_assignment_df: pd.DataFrame,
+def build_named_assignment(
+    cluster_df: pd.DataFrame,
     cluster_name_suggestions_df: pd.DataFrame,
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    tagging_manifest_df: pd.DataFrame,
+    min_character_score: float = 0.70,
+    min_top_margin: float = 0.08,
+) -> pd.DataFrame:
     """
-    Build folder rename plan incorporating accepted character tag suggestions into folder destinations.
+    Assign every image to a character folder.
 
-    Returns:
-        (folder_rename_plan_df, folder_rename_preview_df)
+    Images of clusters with an accepted name take that name. Noise images and images of clusters
+    without an accepted name are named from their own tags when confident; otherwise they go to
+    the review folder. Clusters that share a name end up in the same folder.
     """
-    plan_df = folder_assignment_df.copy()
-    plan_df["cluster_label"] = plan_df["cluster_label"].astype(int)
+    cluster_names = {}
+    if not cluster_name_suggestions_df.empty:
+        accepted = cluster_name_suggestions_df[cluster_name_suggestions_df["accepted_name"].astype(bool)]
+        cluster_names = dict(zip(accepted["cluster_label"].astype(int), accepted["suggested_character_tag"]))
 
-    lookup_cols = [
-        "cluster_label",
-        "cluster_folder_stub",
-        "accepted_name",
-        "suggested_character_tag",
-        "proposed_named_folder",
-        "best_tag_share",
-        "best_weighted_score",
-        "top_margin",
-        "top_tags_json",
+    tagged = tagging_manifest_df[tagging_manifest_df["tagging_status"].eq("ok")]
+    image_names = {
+        int(row): decide_image_name(parse_dict_like(tags), min_character_score, min_top_margin)
+        for row, tags in zip(tagged["embedding_row"], tagged["character_tags_json"])
+    }
+
+    df = cluster_df.copy()
+    by_cluster = df["cluster_label"].astype(int).map(cluster_names)
+    by_image = df["embedding_row"].astype(int).map(image_names)
+    df["character_name"] = by_cluster.where(by_cluster.notna(), by_image)
+    df["naming_source"] = np.select(
+        [by_cluster.notna(), by_image.notna()], ["cluster_vote", "image_tags"], default="unidentified"
+    )
+    df["named_folder"] = [
+        sanitize_folder_name(name) if isinstance(name, str) else REVIEW_FOLDER for name in df["character_name"]
     ]
-    lookup_df = cluster_name_suggestions_df[lookup_cols].copy()
-
-    plan_df = plan_df.merge(
-        lookup_df,
-        on="cluster_label",
-        how="left",
-        suffixes=("", "_naming"),
-    )
-
-    plan_df["accepted_name"] = plan_df["accepted_name"].fillna(False).map(safe_bool)
-    plan_df["named_folder"] = plan_df["proposed_folder"]
-
-    accepted_mask = (
-        plan_df["accepted_name"] & plan_df["proposed_named_folder"].notna() & plan_df["cluster_label"].ne(-1)
-    )
-
-    plan_df.loc[accepted_mask, "named_folder"] = plan_df.loc[accepted_mask, "proposed_named_folder"]
-    plan_df["named_folder"] = plan_df["named_folder"].map(
-        lambda value: sanitize_filename_component(value, fallback="_needs_review")
-    )
-
-    preview_df = (
-        plan_df.groupby(
-            ["proposed_folder", "named_folder", "accepted_name", "suggested_character_tag"],
-            dropna=False,
-        )
-        .size()
-        .reset_index(name="image_count")
-        .sort_values(["accepted_name", "image_count"], ascending=[False, False])
-        .reset_index(drop=True)
-    )
-
-    return plan_df, preview_df
+    return df

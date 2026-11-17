@@ -3,12 +3,11 @@ Cluster-level character tag aggregation, weighted voting, confidence margin calc
 """
 
 from collections import defaultdict
-from typing import Any, DefaultDict, Dict, List
+from typing import Any, DefaultDict, Dict, List, Mapping, Optional
 
 import numpy as np
 import pandas as pd
 
-from ..utils.naming import sanitize_filename_component
 from ..utils.serialization import parse_dict_like, safe_json_dumps
 from .normalization import display_tag_name, normalize_tag_name
 
@@ -33,12 +32,6 @@ def aggregate_cluster_tags(
     for cluster_label, group in tagging_manifest_df.groupby("cluster_label", dropna=False):
         cluster_label = int(cluster_label)
         ok_group = group[group["tagging_status"].eq("ok")].copy()
-
-        cluster_folder_stub = (
-            str(group["cluster_folder_stub"].dropna().iloc[0])
-            if group["cluster_folder_stub"].notna().any()
-            else f"cluster_{cluster_label:05d}_unknown"
-        )
 
         tag_weight: DefaultDict[str, float] = defaultdict(float)
         tag_count: DefaultDict[str, int] = defaultdict(int)
@@ -133,26 +126,14 @@ def aggregate_cluster_tags(
             suggested_name = None
             top_tags_payload = []
 
-        proposed_named_folder = (
-            sanitize_filename_component(suggested_name, fallback=cluster_folder_stub)
-            if suggested_name is not None
-            else cluster_folder_stub
-        )
-        if suggested_name is not None:
-            proposed_named_folder = f"{proposed_named_folder}__{cluster_folder_stub}"
-
         cluster_name_rows.append(
             {
                 "cluster_label": cluster_label,
-                "cluster_folder_stub": cluster_folder_stub,
                 "tagged_image_count": total_tagged,
                 "tagging_error_count": int(group["tagging_status"].ne("ok").sum()),
                 "unique_candidate_character_tags": int(unique_tags),
                 "accepted_name": bool(accepted),
                 "suggested_character_tag": suggested_name,
-                "proposed_named_folder": sanitize_filename_component(
-                    proposed_named_folder, fallback=cluster_folder_stub
-                ),
                 "best_raw_tag": best_tag,
                 "best_tag_count": int(best_count),
                 "best_tag_share": float(best_share),
@@ -181,3 +162,16 @@ def aggregate_cluster_tags(
         ).reset_index(drop=True)
 
     return suggestions_df
+
+
+def decide_image_name(
+    character_tags: Mapping[str, float],
+    min_character_score: float = 0.70,
+    min_top_margin: float = 0.08,
+) -> Optional[str]:
+    """Name a single image when its best character tag is confident and clearly ahead of the runner-up."""
+    scores = sorted(((float(v), normalize_tag_name(k)) for k, v in character_tags.items()), reverse=True)
+    if not scores or scores[0][0] < min_character_score:
+        return None
+    runner_up = scores[1][0] if len(scores) > 1 else 0.0
+    return display_tag_name(scores[0][1]) if scores[0][0] - runner_up >= min_top_margin else None

@@ -1,8 +1,8 @@
 """
 Automatic Organization of Anime Character Images.
 
-A modular pipeline for unsupervised organization of anime character images into
-visual identity clusters and optional semantic tagging.
+A pipeline that organizes anime character images into one folder per character,
+combining visual identity clustering with mandatory character tagging.
 """
 
 from .config import (

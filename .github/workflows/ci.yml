@@ -1,4 +1,4 @@
-name: Python and notebook validation
+name: Python validation
 on:
   push:
   pull_request:
@@ -26,14 +26,8 @@ jobs:
           python -m pip check
       - name: Lint and format (protected directories excluded)
         run: |
-          python -m ruff check src scripts tests notebooks --force-exclude --exclude sandbox
-          python -m ruff format --check src scripts tests notebooks --force-exclude --exclude sandbox
+          python -m ruff check src scripts tests --force-exclude --exclude sandbox
+          python -m ruff format --check src scripts tests --force-exclude --exclude sandbox
           python -m mypy --cache-dir .audit/mypy-cache
       - name: Unit and integration tests with model substitutes
         run: TMPDIR="$PWD/.audit/tmp" python -m pytest tests --ignore-glob='**/sandbox/**'
-      - name: Fresh notebook kernels with synthetic inference
-        run: |
-          export TMPDIR="$PWD/.audit/tmp"
-          export IPYTHONDIR="$PWD/.audit/ipython"
-          export JUPYTER_RUNTIME_DIR="$PWD/.audit/jupyter-runtime"
-          python -m tests.notebook_smoke --output-dir .audit/notebook-smoke

@@ -84,7 +84,6 @@ class ClusteringConfig:
     high_outlier_quantile: float = 0.95
     reassign_noise: bool = True  # Reassigns borderline noise points to closest cluster centroid
     max_reassign_distance: float = 0.55  # Max Euclidean distance to centroid for noise reassignment
-    separate_review_folders: bool = False  # Keep character folders unified instead of splitting
     random_seed: int = 42
 
     def __post_init__(self) -> None:
@@ -102,11 +101,9 @@ class MaterializationConfig:
     allow_hardlink_fallback_to_copy: bool = True
     on_existing: str = "error"  # error, skip, overwrite
     source_column: str = "source_path"
-    create_cluster_metadata_files: bool = True
+    create_folder_info_files: bool = True
     create_folder_manifest_files: bool = True
     create_output_readme: bool = True
-    create_output_contact_sheet_index: bool = True  # Compatibility field; index is always produced
-    copy_cluster_contact_sheets_to_output: bool = True
 
     def __post_init__(self) -> None:
         validate_parameters(**vars(self))
@@ -114,29 +111,15 @@ class MaterializationConfig:
 
 @dataclass
 class TaggingConfig:
-    """Configuration parameters for cluster naming with anime tagger stage."""
+    """Configuration parameters for the character naming stage."""
 
     project_dir: Path = Path("./anime_character_pipeline")
-    previous_clustering_run_dir: Optional[Path] = None
-    previous_materialization_run_dir: Optional[Path] = None
-    primary_tagger: str = "pixai"
-    pixai_model_name: str = "v0.9"
-    wd14_model_name: str = "SwinV2_v3"
-    use_wd14_fallback: bool = True
-    min_cluster_size_to_name: int = 2
+    previous_run_dir: Optional[Path] = None
     max_images_per_cluster_to_tag: int = 12
     min_character_score: float = 0.70
     min_name_share: float = 0.35
     min_weighted_score: float = 0.55
     min_top_margin: float = 0.08
-    ignore_review_folders_for_naming: bool = False
-    tag_only_non_noise_clusters: bool = True
-    create_rename_plan: bool = True
-    create_named_output: bool = True
-    named_output_mode: str = "hardlink"
-    allow_hardlink_fallback_to_copy: bool = True
-    on_existing: str = "error"
-    named_output_dir: Optional[Path] = None
 
     def __post_init__(self) -> None:
         validate_parameters(**vars(self))
@@ -157,7 +140,7 @@ def validate_parameters(**settings: object) -> None:
         "min_samples",
         "max_images_per_cluster_to_tag",
     }
-    minimum_two = {"min_cluster_size", "min_cluster_size_to_name"}
+    minimum_two = {"min_cluster_size"}
     nonnegative = {"head_padding_ratio", "person_padding_ratio", "cluster_selection_epsilon", "max_reassign_distance"}
     fractions = {
         "head_conf_threshold",
@@ -175,9 +158,7 @@ def validate_parameters(**settings: object) -> None:
     choices = {
         "crop_format": {"JPEG", "PNG"},
         "materialization_mode": {"hardlink", "copy", "symlink"},
-        "named_output_mode": {"hardlink", "copy", "symlink"},
         "on_existing": {"error", "skip", "overwrite"},
-        "primary_tagger": {"pixai", "wd14"},
         "cluster_selection_method": {"eom", "leaf"},
         "sample_strategy": {"stratified", "first", "random"},
     }
@@ -227,5 +208,3 @@ def validate_parameters(**settings: object) -> None:
             or any(not isinstance(v, int) or isinstance(v, bool) or v <= 0 for v in value)
         ):
             raise ConfigurationError("crop_output_size must contain two positive integers.")
-    if settings.get("create_named_output") and settings.get("create_rename_plan") is False:
-        raise ConfigurationError("create_named_output requires create_rename_plan=True.")

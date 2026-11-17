@@ -72,17 +72,6 @@ def main(argv=None):
         help="Maximum distance to centroid for noise reassignment (default: 0.55).",
     )
     parser.add_argument(
-        "--separate-review-folders",
-        action="store_true",
-        help="Split review items into separate _review folders.",
-    )
-    parser.add_argument(
-        "--with-tagging",
-        action="store_true",
-        help="Also execute stage 6 semantic naming with anime tagger.",
-    )
-
-    parser.add_argument(
         "--max-images",
         type=int,
         default=None,
@@ -106,8 +95,6 @@ def main(argv=None):
             cluster_selection_epsilon=args.cluster_selection_epsilon,
             reassign_noise=not args.no_reassign_noise,
             max_reassign_distance=args.max_reassign_distance,
-            separate_review_folders=args.separate_review_folders,
-            run_tagging=args.with_tagging,
             materialization_mode=args.mode,
             max_images=args.max_images,
             sample_strategy=args.sample_strategy,
@@ -115,8 +102,10 @@ def main(argv=None):
         print("\n=======================================================")
         print("Pipeline finished successfully!")
         print(f"Organized output: {results['materialize']['final_output_dir']}")
-        print(f"Total organized files: {results['materialize']['summary']['total_files']}")
-        print(f"Total folders created: {results['materialize']['summary']['total_folders']}")
+        naming = results["naming"]["summary"]
+        print(f"Character folders: {naming['character_folders']}")
+        print(f"Images named: {naming['images_named_by_cluster_vote'] + naming['images_named_by_image_tags']}")
+        print(f"Images needing review: {naming['images_needing_review']}")
         print("=======================================================")
         return 0
     except Exception as exc:

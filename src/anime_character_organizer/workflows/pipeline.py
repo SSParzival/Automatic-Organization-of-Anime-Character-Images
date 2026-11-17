@@ -1,5 +1,5 @@
 """
-End-to-end pipeline orchestrator chaining stages 01 through 06.
+End-to-end pipeline orchestrator chaining stages 01 through 06; character naming is always part of it.
 """
 
 from pathlib import Path
@@ -15,6 +15,18 @@ from .materialize import run_folder_materialization
 from .naming import run_cluster_naming
 
 
+def release_imgutils_models() -> None:
+    """Drop imgutils' cached detector and CCIP sessions (about 2 GB) before the tagger loads."""
+    import gc
+
+    from imgutils.generic import yolo
+    from imgutils.metrics import ccip
+
+    for cached in (yolo._open_models_for_repo_id, ccip._open_feat_model, ccip._open_metric_model):
+        cached.cache_clear()
+    gc.collect()
+
+
 def run_full_pipeline(
     input_dir: Union[str, Path],
     project_dir: Union[str, Path] = "./anime_character_pipeline",
@@ -23,15 +35,13 @@ def run_full_pipeline(
     cluster_selection_epsilon: float = 0.50,
     reassign_noise: bool = True,
     max_reassign_distance: float = 0.55,
-    separate_review_folders: bool = False,
-    run_tagging: bool = False,
     materialization_mode: str = "hardlink",
     max_images: Optional[int] = None,
     sample_strategy: str = "stratified",
     show_progress: bool = True,
 ) -> Dict[str, Any]:
     """
-    Execute full pipeline from raw input folder to organized folders.
+    Execute full pipeline from raw input folder to one folder per named character.
 
     Args:
         input_dir: Source folder with images to organize.
@@ -41,8 +51,6 @@ def run_full_pipeline(
         cluster_selection_epsilon: Distance threshold for cluster merging (default: 0.50).
         reassign_noise: Whether to reassign borderline noise to nearest centroid (default: True).
         max_reassign_distance: Max Euclidean distance for noise reassignment (default: 0.55).
-        separate_review_folders: Whether to split review items into separate folders (default: False).
-        run_tagging: If True, executes stage 06 semantic naming after materialization.
         materialization_mode: 'hardlink', 'copy', or 'symlink'.
         max_images: Optional cap on audited images (representative sample of the input).
         sample_strategy: 'stratified', 'first' or 'random' selection when max_images is set.
@@ -89,25 +97,23 @@ def run_full_pipeline(
         cluster_selection_epsilon=cluster_selection_epsilon,
         reassign_noise=reassign_noise,
         max_reassign_distance=max_reassign_distance,
-        separate_review_folders=separate_review_folders,
         show_progress=show_progress,
     )
 
-    print(">>> Stage 5: Folder Materialization")
-    results["materialize"] = run_folder_materialization(
+    release_imgutils_models()
+    print(">>> Stage 5: Character Naming")
+    results["naming"] = run_cluster_naming(
         project_dir=project_dir,
         previous_run_dir=results["cluster"]["run_dir"],
+        show_progress=show_progress,
+    )
+
+    print(">>> Stage 6: Folder Materialization")
+    results["materialize"] = run_folder_materialization(
+        project_dir=project_dir,
+        previous_run_dir=results["naming"]["run_dir"],
         materialization_mode=materialization_mode,
         show_progress=show_progress,
     )
-
-    if run_tagging:
-        print(">>> Stage 6: Semantic Cluster Naming")
-        results["naming"] = run_cluster_naming(
-            project_dir=project_dir,
-            previous_clustering_run_dir=results["cluster"]["run_dir"],
-            previous_materialization_run_dir=results["materialize"]["run_dir"],
-            show_progress=show_progress,
-        )
 
     return results

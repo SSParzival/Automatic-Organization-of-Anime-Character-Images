@@ -36,28 +36,6 @@ def checked_path(value: Union[str, Path], *, allow_leaf_symlink: bool = False) -
     return path
 
 
-def notebook_paths() -> tuple[Path, Path]:
-    """Resolve explicit notebook paths independently of Jupyter's working directory.
-
-    ANIME_PIPELINE_PROJECT_DIR is required and absolute. INPUT_DIR defaults to
-    input_images beside that workspace; a supplied override must also be absolute.
-    """
-    import os
-
-    from ..exceptions import ConfigurationError
-
-    workspace = os.getenv("ANIME_PIPELINE_PROJECT_DIR")
-    if not workspace:
-        raise ConfigurationError(
-            "Set ANIME_PIPELINE_PROJECT_DIR to an absolute workspace path before starting Jupyter."
-        )
-    project = Path(workspace).expanduser()
-    source = Path(os.getenv("ANIME_PIPELINE_INPUT_DIR", str(project.parent / "input_images"))).expanduser()
-    if not project.is_absolute() or not source.is_absolute():
-        raise ConfigurationError("Notebook input and workspace paths must be absolute.")
-    return checked_path(source), checked_path(project)
-
-
 def ensure_empty_output_dir(path: Union[str, Path]) -> Path:
     """Validate that an output directory is safe and either new or empty."""
     from ..exceptions import ConfigurationError

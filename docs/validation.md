@@ -1,6 +1,6 @@
 # Validation and reproducibility
 
-This guide explains how to reproduce checks without accessing protected directories. Run commands from the repository root after installing `.[dev,notebook]`.
+This guide explains how to reproduce checks without accessing protected directories. Run commands from the repository root after installing `.[dev]`.
 
 ## Local checks
 
@@ -10,48 +10,38 @@ export TMPDIR="$PWD/.audit/tmp"
 export MPLBACKEND=Agg
 python -m pip check
 python -m pytest tests --ignore-glob='**/sandbox/**'
-python -m ruff check src scripts tests notebooks --force-exclude --exclude sandbox
-python -m ruff format --check src scripts tests notebooks --force-exclude --exclude sandbox
+python -m ruff check src scripts tests --force-exclude --exclude sandbox
+python -m ruff format --check src scripts tests --force-exclude --exclude sandbox
 python -m mypy --cache-dir .audit/mypy-cache
 ```
 
 Pytest also excludes every directory named `sandbox` through `norecursedirs`. Ruff uses both configured exclusions and explicit protected-directory exclusion. MyPy excludes `(^|/)sandbox/`. Do not supply explicit protected files to any tool. Package discovery lists exactly the ten supported packages and does not recursively discover arbitrary packages.
 
-The suite combines unittest characterization tests with pytest regression/integration tests. Use pytest to run the complete suite; unittest discovery alone does not collect pytest functions. Model inference in tests uses deterministic fixtures, not downloaded models or production data. CLI tests run from unrelated temporary working directories. Model substitutes return two known synthetic embedding groups and one fixed character tag; those values are not recommendations, predictions or accuracy measurements.
+The suite combines unittest characterization tests with pytest regression/integration tests. Use pytest to run the complete suite; unittest discovery alone does not collect pytest functions. Model inference in tests uses deterministic fixtures, not downloaded models or production data. CLI tests run from unrelated temporary working directories. Model substitutes return two known synthetic embedding groups and one fixed character tag per group; those values are not recommendations, predictions or accuracy measurements. The tagger itself is covered by unit tests of its preprocessing and of how its output block is decoded.
 
 MyPy covers all 47 package source files. Missing third-party stubs are ignored and imports followed silently, so a successful run does not establish fully typed pandas/NumPy interfaces.
 
-## Fresh notebook kernels
+## Tagger comparison
 
-```bash
-export IPYTHONDIR="$PWD/.audit/ipython"
-export JUPYTER_RUNTIME_DIR="$PWD/.audit/jupyter-runtime"
-export MPLCONFIGDIR="$PWD/.audit/matplotlib"
-python -m tests.notebook_smoke --output-dir .audit/new-notebook-evidence
-```
+The naming stage uses PixAI Tagger v1.0 instead of the previous PixAI v0.9 with WD14 fallback. The checks below ran on 2026-11-17 on an Intel Core i5-14600KF (CPU only, 16 GB RAM).
 
-The evidence directory must be new or empty. This command:
+**Vocabulary.** From the published tag lists: PixAI v1.0 has 8,308 character tags, PixAI v0.9 3,720 and WD14 v3 (SwinV2 and EVA02-Large) 2,751. Only 81 of v0.9's characters are missing from v1.0. On the model card's benchmark, AnimeTIMM SigLIP Giant scores 0.927 character micro-F1 against 0.924 for v1.0, but AnimeTIMM repositories are gated behind a Hugging Face login.
 
-1. Reads and structurally validates the exact seven known notebook paths; no recursive notebook traversal is used.
-2. Parses every code cell and creates ten synthetic images.
-3. Executes each notebook top to bottom in a fresh kernel using the invoking Python interpreter.
-4. Sets absolute input/workspace paths independent of the kernel working directory.
-5. Substitutes only head/person detection, CCIP extraction/warmup and tagger inference. Audit, validation, normalization, real HDBSCAN, plotting, planning, file operations and report persistence remain real.
-6. Chains stages 1–6 through one workspace and executes the master notebook with a separate workspace.
-7. Shuts down each kernel, writes executed copies and a `results.json`, and returns nonzero if any notebook fails.
+**Local fan art sample.** 200 images drawn at random from a private collection of 23,853 fan art images (`--max-images 200 --sample-strategy random`), cropped by the crop stage, then tagged by each model on the same 512 px crops. "Named" uses the per-image rule of the naming stage (top character at least 0.70, ahead of the next by 0.08).
 
-Source notebooks are never overwritten by execution. The master source notebook retains its original user configuration stdout/count/kernel metadata; other source notebooks have no embedded outputs. Executed copies are private evidence artifacts and may contain local paths and synthetic contact sheets.
+| | PixAI v0.9 | PixAI v1.0 |
+|---|---:|---:|
+| Crops named | 101 (50 %) | 135 (68 %) |
+| Median time per crop | 1.08 s | 9.20 s |
+| Peak memory | 2.25 GB | 4.80 GB |
 
-For actual inference, remove substitution explicitly:
+Both models named 85 crops and agreed on 75. Of the 50 crops only v1.0 named, 42 were characters absent from v0.9's vocabulary; so were v1.0's answers in 8 of the 10 disagreements. The largest group among them is Zenless Zone Zero (released 2024). Of the 16 crops only v0.9 named, a visual review found several clear errors (a Steven Universe character tagged `harime_nui`, a pig sketch tagged `doraemon_(character)`) and several plausible names that v1.0 scored between 0.45 and 0.61. v1.0 scores are bimodal: lowering the 0.70 threshold to 0.50 would add only 4 named crops, so the threshold was kept. No ground-truth labels exist for this sample, so these figures measure coverage and agreement, not accuracy.
 
-```bash
-export HF_HOME="$PWD/.audit/model-cache"
-export TORCH_HOME="$PWD/.audit/torch-cache"
-export XDG_CACHE_HOME="$PWD/.audit/cache"
-HF_HUB_OFFLINE=0 python -m tests.notebook_smoke --live --timeout 45 --output-dir .audit/new-live-evidence
-```
+**Export fidelity.** The pipeline runs a third-party ONNX export (`noaione/pixai-tagger-v1.0-onnx`, commit `68e8f4f`) with its own preprocessing. On 12 of the sample crops, its character probabilities matched the official PyTorch pipeline (`pixai-labs/pixai-tagger-v1.0`, commit `9fe10ad`, transformers 4.57.6): same top character on 12/12, largest absolute difference 0.012.
 
-This can download model weights. A cell timeout or unavailable model is a failure/blocker, not a passing inference check. With `HF_HUB_OFFLINE=1` and uncached weights, crop preparation can complete using warning-bearing fallbacks, while CCIP raises `EmbeddingError` and downstream stages report missing completed runs. Even successful inference on synthetic solid-color images does not establish useful character clustering accuracy. A representative labelled collection and manually reviewed contact sheets are required for that assessment.
+**Memory.** With ONNX Runtime's default CPU memory arena, resident memory reached 7.9 GB after the second 1008 px inference and stayed there. With the arena and memory pattern disabled, as the pipeline does, it returns to 2.1 GB between inferences with a 4.8 GB peak (14 consecutive inferences). Before naming, the pipeline also releases the detector and CCIP sessions that imgutils keeps cached (about 2 GB). A full run on 40 images of the collection then peaked at 5.8 GB and took 6 min 50 s: 19 character folders, 25 images named (7 by cluster vote, 18 by their own tags), 15 sent to `_needs_review`.
+
+Every image is tagged at most once, so on this CPU a full run spends at most about 9 s per image in the naming stage; clusters with an accepted name only tag up to 12 representative crops.
 
 ## Package build with protected inputs excluded
 
@@ -83,14 +73,10 @@ PY
 python -m build --no-isolation .audit/new-build-source --outdir .audit/new-dist
 ```
 
-Install build requirements first, including `setuptools>=77` and wheel, when using `--no-isolation`. This snapshot builds the library; operational scripts, notebooks and audit documentation remain repository deliverables. Local validation built both sdist and wheel, checked archive member names for protected paths, installed the wheel into `.audit/wheel-install` with `--no-deps`, and imported it ahead of the editable package using the already validated dependency environment. A clean-machine wheel installation across all supported Python/OS combinations was not performed.
+Install build requirements first, including `setuptools>=77` and wheel, when using `--no-isolation`. This snapshot builds the library; the pipeline script and documentation remain repository deliverables. Local validation built both sdist and wheel, checked archive member names for protected paths, installed the wheel into `.audit/wheel-install` with `--no-deps`, and imported it ahead of the editable package using the already validated dependency environment. A clean-machine wheel installation across all supported Python/OS combinations was not performed.
 
-## Evidence and failure history
+## Evidence and limits
 
-Local private artifacts under `.audit/` include baseline metadata, separated master-notebook upgrade diff, focused/full test logs, initial/final notebook execution copies, offline/live results, installation/build logs and archives. These files are ignored and must not be committed because reports can contain personal paths.
+Local private artifacts under `.audit/` can include test logs, installation/build logs and archives. These files are ignored and must not be committed because reports can contain personal paths.
 
-Validation deliberately began with failing regressions: fourteen filesystem/order/schema cases reproduced defects before correction. The first broad type pass identified ten annotations/contracts to correct. A CLI test initially expected a literal `Error` prefix from the pipeline while the CLI emitted an actionable `failed` message with status one; the assertion was corrected to accept both documented error forms. Initial notebook lint found 52 issues; all were fixed with cell-aware Ruff. Intermediate syntax/lint/type failures were corrected and affected checks rerun.
-
-The bounded network-enabled attempt subsequently passed all seven notebooks with actual models on synthetic input; detector failure warnings were absent, CCIP returned ten 768D vectors, and tagging processed ten samples with zero errors and zero accepted names. These observations establish installed interface compatibility, not identity quality.
-
-Remote CI is configured for Python 3.10/3.11, but was not triggered in this session. No coverage-percentage target, adversarial race-resistance certification, CVE/database vulnerability audit, representative identity accuracy benchmark, Windows/macOS run or hardware-provider validation is claimed.
+Remote CI is configured for Python 3.10/3.11. No coverage-percentage target, adversarial race-resistance certification, CVE/database vulnerability audit, labelled identity accuracy benchmark, Windows/macOS run or hardware-provider validation is claimed.

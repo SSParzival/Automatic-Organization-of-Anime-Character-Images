@@ -43,7 +43,6 @@ def run_clustering(
     high_outlier_quantile: float = 0.95,
     reassign_noise: bool = True,
     max_reassign_distance: float = 0.55,
-    separate_review_folders: bool = False,
     random_seed: int = 42,
     show_progress: bool = True,
 ) -> Dict[str, Any]:
@@ -169,10 +168,7 @@ def run_clustering(
     cluster_manifest_df.loc[reassigned_mask, "cluster_review_reason"] = "reassigned_from_noise"
     cluster_manifest_df.loc[reassigned_mask, "requires_manual_review"] = True
     cluster_summary_df = calculate_cluster_summary(cluster_manifest_df)
-    folder_assignment_df = build_folder_assignment_manifest(
-        cluster_manifest_df,
-        separate_review_folders=separate_review_folders,
-    )
+    folder_assignment_df = build_folder_assignment_manifest(cluster_manifest_df)
 
     # Save arrays and tables
     labels_path = arrays_dir / "cluster_labels.npy"
