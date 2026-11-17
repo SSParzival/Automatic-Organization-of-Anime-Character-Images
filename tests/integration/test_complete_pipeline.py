@@ -13,7 +13,7 @@ from anime_character_organizer.exceptions import (
     MaterializationError,
     TaggingError,
 )
-from anime_character_organizer.tagging.renaming import ONLINE_MATCH
+from anime_character_organizer.tagging.renaming import IMAGE_OVER_CLUSTER, ONLINE_MATCH
 from anime_character_organizer.workflows.materialize import run_folder_materialization
 from anime_character_organizer.workflows.naming import run_cluster_naming
 from anime_character_organizer.workflows.pipeline import run_full_pipeline
@@ -152,8 +152,13 @@ def test_materialization_workflow_supports_all_documented_modes(completed_pipeli
         assert Path(path).exists()
 
 
-def test_online_matches_name_cluster_without_local_tagging(completed_pipeline, tmp_path):
-    """Two exact Danbooru matches name cluster a; a costume tag and its base character share one name."""
+def test_online_matches_name_cluster_and_its_other_members_are_checked(completed_pipeline, tmp_path):
+    """
+    Two exact Danbooru matches name cluster a; a costume tag and its base character share one name.
+
+    The cluster's other members have no match of their own, so they are tagged; their confident tag of
+    another character, without a trace of the cluster's, moves them out as it would for a lookalike.
+    """
     from anime_character_organizer.tagging.online import file_md5
     from tests.fixtures.online_substitutes import FakeDanbooru
 
@@ -178,12 +183,12 @@ def test_online_matches_name_cluster_without_local_tagging(completed_pipeline, t
         naming = run_cluster_naming(workspace, completed_pipeline["cluster"]["run_dir"], show_progress=False)
     summary = naming["summary"]
     assert summary["clusters_named_online"] == 1
-    assert summary["total_tagged_images"] == 5  # only cluster b is tagged locally
+    assert summary["total_tagged_images"] == 8  # cluster b and the three unmatched members of cluster a
     assigned = naming["named_assignment_df"].set_index("source_path").loc[sources]
-    assert assigned["character_name"].tolist() == ["hatsune_miku"] * 5 + ["character_b"] * 4 + [
+    assert assigned["character_name"].tolist() == ["hatsune_miku"] * 2 + ["character_a"] * 3 + ["character_b"] * 4 + [
         "artoria_pendragon_(fate)"
     ]
-    assert assigned["naming_source"].tolist() == [ONLINE_MATCH] * 2 + ["online_cluster_vote"] * 3 + [
+    assert assigned["naming_source"].tolist() == [ONLINE_MATCH] * 2 + [IMAGE_OVER_CLUSTER] * 3 + [
         "cluster_vote"
     ] * 4 + [ONLINE_MATCH]
     assert (workspace / "cache" / "online_identification.json").is_file()

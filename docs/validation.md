@@ -75,6 +75,26 @@ Looking images up first is both faster and more accurate: exact matches name who
 
 The tagger's confident names are reliable; its misses are new or obscure characters, group pictures and stylized drawings. Online matches cover the first two, and name resolution the costume splits.
 
+## Reverse image search
+
+Checked on 2026-11-17 with a free Danbooru account and a free SauceNAO account, on the 600 images of `--max-images 600 --sample-strategy random`.
+
+**IQDB score threshold.** The 370 images of that sample that the tagger had tagged and that are not unmodified Danbooru posts were searched on Danbooru IQDB (1.5 to 1.7 s per search, uploads of at most 768 px). Scores split in two groups: 166 images scored at least 70 and 185 below 35, with 19 in between. Of the images scoring at least 70 whose tagger top score was at least 0.70, the IQDB match listed the tagger's character on 128 of 128. Between 40 and 70, 1 of 6 such images agreed: those matches are other pictures of a similar style or composition. Thresholds of 60 to 85 accept the same images within 3 (158 to 161); 90 drops 11 correct matches. The pipeline keeps 85.
+
+On 40 unmodified Danbooru posts cropped by 4 % on each side and re-encoded, IQDB found the original post 37 times and a post of the same characters 40 times, with scores of 40 to 70; uploads of 384 px and 768 px gave the same results and times. Such edits fall below the threshold and are left to the tagger: real reposts in the collection score far higher than this test.
+
+**SauceNAO.** The free account allows 4 searches per 30 s and 100 per day (`short_limit`, `long_limit` in its responses); the daily limit applies to the IP address, shared by every free account on it. On 16 images that IQDB could not match and the tagger named with a score of at least 0.90, SauceNAO found nothing at a similarity of 60 or more: its best results were unrelated images from other sites. One search failed with a non-zero status and no message, and succeeded when repeated. Failed searches are not cached, so the image is searched again on a later run; a positive status (some SauceNAO indexes unavailable) with results keeps those results.
+
+**Naming with reverse image search.** Stage 5 ran three times on the same clustering of the 600 images (107 clusters); each run tagged its crops anew:
+
+| Run | Online matches | Images named | `_needs_review` | Crops tagged | Stage 5 time |
+|---|---:|---:|---:|---:|---:|
+| Hash lookup only (no credentials) | 141 | 480 | 120 | 444 | 67 min |
+| IQDB and SauceNAO, cluster names inherited by unmatched members | 300 | 509 | 91 | 347 | 51 min |
+| IQDB and SauceNAO, unmatched members of online-named clusters checked (current) | 345 | 509 | 91 | 411 | 60 min |
+
+The baseline run shared the CPU with a tagger benchmark for a few minutes, so its time is slightly inflated. Of 72 SauceNAO searches in the second run, 1 gave a match (similarity 88.7); the rest of the quota went to images no index had. In the second run, 109 images took their cluster's online name without any check; 20 of them had been tagged in the baseline run, and 3 of those carried a confident tag of another character without the cluster's (sisters `tatsumaki` and `fubuki_(one-punch_man)`, and two images grouped with `kasane_teto`). The current rule searches those members online and tags the ones still unmatched: it costs 89 IQDB searches and 64 crops (about 9 minutes here) and changed 8 names, 5 to the image's own online match and 3 to its own confident tag.
+
 ## Package build with protected inputs excluded
 
 Build from a snapshot containing only approved metadata and package source. This prevents build-system traversal of any protected directory in the working checkout:

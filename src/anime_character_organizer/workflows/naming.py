@@ -229,9 +229,9 @@ def run_cluster_naming(
     With online lookup, every image is first matched by file hash on Danbooru, and each cluster is
     identified online from representative images (reverse image search needs credentials); agreeing
     matches name the cluster. Clusters left unnamed are named by a vote of the local tagger over
-    representative crops. Unclustered images, images of unnamed clusters and members HDBSCAN placed
-    with low confidence are identified online one by one, and tagged locally when no online match
-    settles them. Lookups run in a background thread while the CPU tags. All names are mapped to
+    representative crops. Unclustered images, images of unnamed clusters, members HDBSCAN placed
+    with low confidence and members of clusters named online are identified online one by one, and
+    tagged locally when no online match settles them. Lookups run in a background thread while the CPU tags. All names are mapped to
     canonical Danbooru character tags, so aliases and costume variants share a folder. Images without
     a confident name go to review.
     """
@@ -320,15 +320,21 @@ def run_cluster_naming(
     tagged = {r["embedding_row"] for r in records}
 
     choosing = 0
+    # Members of a cluster named online without a match of their own are checked like unclustered images:
+    # lookalike characters share clusters, and nothing else confirms their name.
+    online_named = [label for label, (_, source) in cluster_names.items() if source == "online_cluster_vote"]
+    unconfirmed = cluster_df["cluster_label"].isin(online_named) & ~cluster_df["embedding_row"].astype(int).isin(online)
+    trusted = set(cluster_df.loc[~unconfirmed, "embedding_row"].astype(int))
 
     def tag_if_needed(row: int, listed: List[str]) -> None:
         nonlocal choosing
-        if row not in tagged and row in crops.index and needs_tags(listed, preferred[row], preferred[row] is not None):
+        cluster_named = preferred[row] is not None and row in trusted
+        if row not in tagged and row in crops.index and needs_tags(listed, preferred[row], cluster_named):
             records.extend(tag_crops(crops.loc[[row]], show_progress=False))
             tagged.add(row)
             choosing += bool(listed)
 
-    pending = cluster_df[~cluster_df["cluster_label"].isin(cluster_names) | doubtful_members(cluster_df)]
+    pending = cluster_df[~cluster_df["cluster_label"].isin(cluster_names) | doubtful_members(cluster_df) | unconfirmed]
     items = list(zip(pending["embedding_row"].astype(int), pending["source_path"]))
     lookup = (lambda item: identifier.identify(item[1])) if identifier is not None else (lambda item: None)
     for (row, _), result in overlapped(items, lookup, show_progress, "Naming images"):
