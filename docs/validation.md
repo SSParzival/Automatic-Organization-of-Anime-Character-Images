@@ -41,7 +41,9 @@ Both models named 85 crops and agreed on 75. Of the 50 crops only v1.0 named, 42
 
 **Memory.** With ONNX Runtime's default CPU memory arena, resident memory reached 7.9 GB after the second 1008 px inference and stayed there. With the arena and memory pattern disabled, as the pipeline does, it returns to 2.1 GB between inferences with a 4.8 GB peak (14 consecutive inferences). Before naming, the pipeline also releases the detector and CCIP sessions that imgutils keeps cached (about 2 GB). A full run on 40 images of the collection then peaked at 5.8 GB and took 6 min 50 s: 19 character folders, 25 images named (7 by cluster vote, 18 by their own tags), 15 sent to `_needs_review`.
 
-Every image is tagged at most once, so on this CPU a full run spends at most about 9 s per image in the naming stage; clusters with an accepted name only tag up to 12 representative crops.
+**Int8 tagger.** The pipeline runs an int8 copy of the export, built with ONNX Runtime's dynamic quantization (per-channel int8 weights, MatMul layers only). On 60 crops of the 600-image sample it took 5.09 s per crop against 8.91 s in float32 (1.75 times faster), gave the same top character on 59 and the same naming decision (0.70 score, 0.08 margin) on 59; on the last one it named a character (`furudo_erika`) that float32 left unnamed. The largest probability difference was 0.21, and 99 % of the differences on probabilities above 0.1 stayed under 0.12. Quantizing every operator type with per-tensor weights was as fast (5.25 s) but changed 2 decisions, with differences up to 0.31. Thread counts of 6 and 14 were not faster than ONNX Runtime's default.
+
+Every image is tagged at most once, so on this CPU a full run spends at most about 5 s per image in the naming stage; clusters with an accepted name only tag up to 12 representative crops.
 
 ## Online identification and naming strategies
 

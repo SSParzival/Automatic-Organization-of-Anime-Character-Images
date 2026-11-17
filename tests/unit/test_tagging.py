@@ -18,7 +18,7 @@ from anime_character_organizer.tagging.aggregation import (
     decide_image_name,
     vote_online_cluster,
 )
-from anime_character_organizer.tagging.extraction import extract_character_tags, preprocess_image
+from anime_character_organizer.tagging.extraction import extract_character_tags, preprocess_image, quantized_model
 from anime_character_organizer.tagging.normalization import display_tag_name, normalize_tag_name
 from anime_character_organizer.tagging.renaming import (
     IMAGE_OVER_CLUSTER,
@@ -307,3 +307,19 @@ def test_needs_tags():
     assert needs_tags(["miku", "rin"], "luka", cluster_named=True)
     assert needs_tags([], None, cluster_named=False)
     assert not needs_tags([], "luka", cluster_named=True)
+
+
+def test_int8_tagger_is_built_once_in_the_user_cache(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    built = []
+
+    def fake_quantize(source, target, **options):
+        built.append(options)
+        Path(target).write_bytes(b"int8")
+
+    with patch("onnxruntime.quantization.quantize_dynamic", side_effect=fake_quantize):
+        first = quantized_model(tmp_path / "model.onnx")
+        assert quantized_model(tmp_path / "model.onnx") == first
+    assert first.parent == tmp_path / "anime-character-organizer" and first.read_bytes() == b"int8"
+    assert len(built) == 1 and built[0]["per_channel"] and built[0]["op_types_to_quantize"] == ["MatMul"]
+    assert not list(first.parent.glob("*.partial.onnx"))

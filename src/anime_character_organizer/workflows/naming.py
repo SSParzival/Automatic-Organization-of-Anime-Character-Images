@@ -18,7 +18,13 @@ from tqdm.auto import tqdm
 from ..config import validate_parameters
 from ..exceptions import ConfigurationError, InvalidImageError, TaggingError
 from ..tagging.aggregation import aggregate_cluster_tags, choose_candidate, decide_image_name, vote_online_cluster
-from ..tagging.extraction import TAGGER_NAME, TAGGER_REVISION, extract_character_tags, load_character_tagger
+from ..tagging.extraction import (
+    TAGGER_NAME,
+    TAGGER_PRECISION,
+    TAGGER_REVISION,
+    extract_character_tags,
+    load_character_tagger,
+)
 from ..tagging.identification import OnlineIdentifier
 from ..tagging.online import clients_from_environment
 from ..tagging.renaming import IMAGE_OVER_CLUSTER, ONLINE_MATCH, REVIEW_FOLDER, build_named_assignment
@@ -391,7 +397,7 @@ def run_cluster_naming(
         "project_dir": project_dir.as_posix(),
         "previous_run_dir": previous_run_dir.as_posix(),
         "run_dir": run_dir.as_posix(),
-        "tagger": {"name": TAGGER_NAME, "revision": TAGGER_REVISION},
+        "tagger": {"name": TAGGER_NAME, "revision": TAGGER_REVISION, "precision": TAGGER_PRECISION},
         "online_lookup": {
             "enabled": identifier is not None,
             "reverse_image_search": bool(identifier and identifier.can_search_images),

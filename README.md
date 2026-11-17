@@ -6,14 +6,16 @@ Organizes a folder of anime illustrations, fan art included, into one folder per
 
 Python 3.10+ is required.
 
+The project runs on the system Python (checked with 3.14). On distributions that mark it as externally managed, install into the user site:
+
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-python -m pip install -e .            # add '.[dev]' for tests
+python -m pip install --user --break-system-packages -e ".[dev]"   # '.[dev]' adds the test tools
+python -m pip uninstall --break-system-packages -y numpy           # only if the system has NumPy 2
 ```
 
-In fish, activate with `source .venv/bin/activate.fish`. Every command below assumes the virtual environment is active; otherwise call `.venv/bin/python` instead of `python`, since a system `python` lacks the dependencies.
+dghs-imgutils declares `numpy<2`, so pip puts NumPy 1.26 in the user site, where it shadows the system NumPy 2 and breaks system packages built for it. The pipeline and its tests pass with NumPy 2.5, hence the second command.
 
-Models are downloaded from Hugging Face the first time they are used (about 2.2 GB, 1.9 GB of it for the tagger). Set `HF_HOME` to change the cache location.
+Models are downloaded from Hugging Face the first time they are used (about 2.2 GB, 1.9 GB of it for the tagger). Set `HF_HOME` to change the cache location. The first run also builds an int8 copy of the tagger (about 15 s and 6.5 GB of RAM, once) in `~/.cache/anime-character-organizer/` (500 MB; `XDG_CACHE_HOME` moves it).
 
 ## Configure
 
@@ -136,7 +138,7 @@ Tests use synthetic images and model stand-ins, so they need no downloads. [docs
 - The local tagger only names characters in its vocabulary. Other characters are named only when an online match finds them; original characters and art that is not on Danbooru or in SauceNAO's indexes go to `_needs_review`.
 - Online identification depends on Danbooru and SauceNAO being reachable and on their quotas. When a service fails or runs out, the run goes on with the local tagger and the next run retries those images.
 - Names follow Danbooru's tag relations: costume and form tags join their character, and the few player-character roles Danbooru links the same way share one folder (Stelle and Caelus become `trailblazer_(honkai:_star_rail)`).
-- Tagging is the slowest stage: on an Intel i5-14600KF it takes about 9 s per tagged crop, and a run peaks at about 6 GB of RAM. Each image is tagged at most once; clusters named online only tag the members no online match confirms, and other named clusters tag up to 12. Use `--max-images` to try settings on a sample first.
+- Tagging is the slowest stage: on an Intel i5-14600KF the int8 tagger takes about 5 s per tagged crop (8.9 s in float32), and a run peaks at about 6 GB of RAM. Each image is tagged at most once; clusters named online only tag the members no online match confirms, and other named clusters tag up to 12. Use `--max-images` to try settings on a sample first.
 - Each image yields one crop, so in multi-character scenes only one character is used. When an online match lists several characters, the one the tagger scores highest on the crop is chosen.
 - Similar character designs or heavy costume changes can merge or split clusters. A merged cluster is split by per-image names only when its vote fails; an online cluster name needs two thirds of the identified images to agree, and images with their own online match keep it.
 - With `hardlink` mode, organized files share their bytes with the originals; with `symlink` mode, they break if the source folder moves.
