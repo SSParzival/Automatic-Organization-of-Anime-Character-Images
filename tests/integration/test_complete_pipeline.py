@@ -152,44 +152,102 @@ def test_materialization_workflow_supports_all_documented_modes(completed_pipeli
         assert Path(path).exists()
 
 
-def test_online_matches_name_cluster_and_its_other_members_are_checked(completed_pipeline, tmp_path):
-    """
-    Two exact Danbooru matches name cluster a; a costume tag and its base character share one name.
-
-    The cluster's other members have no match of their own, so they are tagged; their confident tag of
-    another character, without a trace of the cluster's, moves them out as it would for a lookalike.
-    """
-    from anime_character_organizer.tagging.online import file_md5
+def online_workspace(posts, tmp_path):
     from tests.fixtures.online_substitutes import FakeDanbooru
 
-    sources = completed_pipeline["audit"]["valid_df"]["path"].sort_values().tolist()
-    client = FakeDanbooru(
-        posts=[
-            {"id": 1, "md5": file_md5(sources[0]), "tag_string_character": "hatsune_miku_(append)"},
-            {"id": 2, "md5": file_md5(sources[1]), "tag_string_character": "hatsune_miku hatsune_miku_(append)"},
-            {"id": 3, "md5": file_md5(sources[9]), "tag_string_character": "saber"},
-        ]
-    )
+    client = FakeDanbooru(posts=posts)
     client.can_search_images = False
     workspace = tmp_path / "online"
-    with (
+    patches = (
         patch(
             "anime_character_organizer.workflows.naming.clients_from_environment",
             return_value={"danbooru": client, "saucenao": None},
         ),
         patch("anime_character_organizer.workflows.naming.extract_character_tags", side_effect=synthetic_tags),
         patch("anime_character_organizer.workflows.naming.load_character_tagger"),
-    ):
+    )
+    for handle in patches:
+        handle.start()
+    return patches, workspace
+
+
+def test_unanimous_online_vote_trusts_the_cluster_name(completed_pipeline, tmp_path):
+    """
+    Two exact Danbooru matches name cluster a; a costume tag and its base character share one name.
+
+    Every identified representative agrees, so the cluster's other members keep its name without an
+    individual lookup and only the unnamed cluster b reaches the local tagger.
+    """
+    from anime_character_organizer.tagging.online import file_md5
+
+    sources = completed_pipeline["audit"]["valid_df"]["path"].sort_values().tolist()
+    patches, workspace = online_workspace(
+        [
+            {"id": 1, "md5": file_md5(sources[0]), "tag_string_character": "hatsune_miku_(append)"},
+            {"id": 2, "md5": file_md5(sources[1]), "tag_string_character": "hatsune_miku hatsune_miku_(append)"},
+            {"id": 3, "md5": file_md5(sources[9]), "tag_string_character": "saber"},
+        ],
+        tmp_path,
+    )
+    try:
         naming = run_cluster_naming(workspace, completed_pipeline["cluster"]["run_dir"], show_progress=False)
+    finally:
+        for handle in patches:
+            handle.stop()
     summary = naming["summary"]
     assert summary["clusters_named_online"] == 1
-    assert summary["total_tagged_images"] == 8  # cluster b and the three unmatched members of cluster a
+    assert summary["clusters_named_online_contested"] == 0
+    assert summary["images_individually_checked"] == 1  # only the member HDBSCAN flagged as an outlier
+    assert summary["total_tagged_images"] == 5  # only the unnamed cluster b is tagged
     assigned = naming["named_assignment_df"].set_index("source_path").loc[sources]
-    assert assigned["character_name"].tolist() == ["hatsune_miku"] * 2 + ["character_a"] * 3 + ["character_b"] * 4 + [
+    assert assigned["character_name"].tolist() == ["hatsune_miku"] * 5 + ["character_b"] * 4 + [
         "artoria_pendragon_(fate)"
     ]
-    assert assigned["naming_source"].tolist() == [ONLINE_MATCH] * 2 + [IMAGE_OVER_CLUSTER] * 3 + [
+    assert assigned["naming_source"].tolist() == [ONLINE_MATCH] * 2 + ["online_cluster_vote"] * 3 + [
         "cluster_vote"
     ] * 4 + [ONLINE_MATCH]
     assert (workspace / "cache" / "online_identification.json").is_file()
     assert json.loads((workspace / "cache" / "character_names.json").read_text())["saber"] == "artoria_pendragon_(fate)"
+
+
+def test_contested_online_vote_checks_the_unmatched_members(completed_pipeline, tmp_path):
+    """
+    A third exact match lists another character, so the cluster's vote is contested.
+
+    The majority still names the cluster, but its unmatched members are checked one by one; their
+    confident tag of another character, without a trace of the cluster's, moves them out as it would
+    for a lookalike.
+    """
+    from anime_character_organizer.tagging.online import file_md5
+
+    sources = completed_pipeline["audit"]["valid_df"]["path"].sort_values().tolist()
+    patches, workspace = online_workspace(
+        [
+            {"id": 1, "md5": file_md5(sources[0]), "tag_string_character": "hatsune_miku_(append)"},
+            {"id": 2, "md5": file_md5(sources[1]), "tag_string_character": "hatsune_miku hatsune_miku_(append)"},
+            {"id": 3, "md5": file_md5(sources[2]), "tag_string_character": "saber"},
+            {"id": 4, "md5": file_md5(sources[9]), "tag_string_character": "saber"},
+        ],
+        tmp_path,
+    )
+    try:
+        naming = run_cluster_naming(workspace, completed_pipeline["cluster"]["run_dir"], show_progress=False)
+    finally:
+        for handle in patches:
+            handle.stop()
+    summary = naming["summary"]
+    assert summary["clusters_named_online"] == 1
+    assert summary["clusters_named_online_contested"] == 1
+    assert summary["images_individually_checked"] == 2  # the two unmatched members of cluster a
+    assert summary["total_tagged_images"] == 7  # the cluster b samples plus those two members
+    assigned = naming["named_assignment_df"].set_index("source_path").loc[sources]
+    assert assigned["character_name"].tolist() == [
+        "hatsune_miku",
+        "hatsune_miku",
+        "artoria_pendragon_(fate)",
+        "character_a",
+        "character_a",
+    ] + ["character_b"] * 4 + ["artoria_pendragon_(fate)"]
+    assert assigned["naming_source"].tolist() == [ONLINE_MATCH] * 3 + [IMAGE_OVER_CLUSTER] * 2 + [
+        "cluster_vote"
+    ] * 4 + [ONLINE_MATCH]

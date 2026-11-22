@@ -236,8 +236,9 @@ def run_cluster_naming(
     identified online from representative images (reverse image search needs credentials); agreeing
     matches name the cluster. Clusters left unnamed are named by a vote of the local tagger over
     representative crops. Unclustered images, images of unnamed clusters, members HDBSCAN placed
-    with low confidence and members of clusters named online are identified online one by one, and
-    tagged locally when no online match settles them. Lookups run in a background thread while the CPU tags. All names are mapped to
+    with low confidence and members of contested online-named clusters are identified online one by
+    one, and tagged locally when no online match settles them; members of a unanimously named
+    online cluster keep the cluster's name. Lookups run in a background thread while the CPU tags. All names are mapped to
     canonical Danbooru character tags, so aliases and costume variants share a folder. Images without
     a confident name go to review.
     """
@@ -299,11 +300,15 @@ def run_cluster_naming(
             records += tag_crops(samples, show_progress=False)
     names = resolve_names(resolver, raw_names(online, records))
     cluster_names: Dict[int, Tuple[str, str]] = {}
+    contested: set[int] = set()
     for group in groups:
         votes = [canonical_candidates(online.get(int(r)), names) for r in group["embedding_row"] if int(r) in online]
         name = vote_online_cluster(votes)
         if name:
-            cluster_names[int(group["cluster_label"].iloc[0])] = (name, "online_cluster_vote")
+            label = int(group["cluster_label"].iloc[0])
+            cluster_names[label] = (name, "online_cluster_vote")
+            if any(name not in candidates for candidates in votes):
+                contested.add(label)
     cluster_name_suggestions_df = aggregate_cluster_tags(
         canonical_records([r for r in records if r["cluster_label"] not in cluster_names], names),
         min_character_score=min_character_score,
@@ -326,10 +331,11 @@ def run_cluster_naming(
     tagged = {r["embedding_row"] for r in records}
 
     choosing = 0
-    # Members of a cluster named online without a match of their own are checked like unclustered images:
-    # lookalike characters share clusters, and nothing else confirms their name.
-    online_named = [label for label, (_, source) in cluster_names.items() if source == "online_cluster_vote"]
-    unconfirmed = cluster_df["cluster_label"].isin(online_named) & ~cluster_df["embedding_row"].astype(int).isin(online)
+    # Members of a cluster named online are checked like unclustered images when that cluster's
+    # identified representatives do not all agree on the name: a dissenting match means lookalike
+    # characters share the cluster, and nothing else confirms a member's name. A unanimous vote
+    # is trusted, so its members keep the cluster's name without an individual lookup.
+    unconfirmed = cluster_df["cluster_label"].isin(contested) & ~cluster_df["embedding_row"].astype(int).isin(online)
     trusted = set(cluster_df.loc[~unconfirmed, "embedding_row"].astype(int))
 
     def tag_if_needed(row: int, listed: List[str]) -> None:
@@ -409,6 +415,8 @@ def run_cluster_naming(
         "clusters_evaluated": int(clustered["cluster_label"].nunique()),
         "clusters_named": len(cluster_names),
         "clusters_named_online": sum(1 for _, source in cluster_names.values() if source == "online_cluster_vote"),
+        "clusters_named_online_contested": len(contested),
+        "images_individually_checked": len(items),
         "character_folders": int(folder_preview_df["named_folder"].drop_duplicates().ne(REVIEW_FOLDER).sum()),
         "images_named_online": int(source_counts.get(ONLINE_MATCH, 0)),
         "images_named_by_online_cluster_vote": int(source_counts.get("online_cluster_vote", 0)),
